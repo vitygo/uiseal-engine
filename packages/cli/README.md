@@ -92,6 +92,10 @@ export default defineConfig({
 
 Rules accept `'error'`, `'warn'`, or `'off'`.
 
+## Network behaviour
+
+uiseal makes **zero network requests by default**. Setting `UISEAL_TOKEN` enables license validation (result cached for 24 hours). Network requests are never made for design-rule checking on the free tier. If you hold a paid license and want to see in-terminal announcements, set `UISEAL_SHOW_BANNER=1`.
+
 ## CI integration
 
 ```yaml

@@ -32,6 +32,10 @@ for (const violation of result.violations) {
 }
 ```
 
+## Network behaviour
+
+`@uiseal/core` makes **zero network requests by default**. Providing a `UISEAL_TOKEN` environment variable enables license validation (result cached for 24 hours); no network call is ever made for design-rule checking itself. See `@uiseal/cli` README for the full network policy.
+
 ## Docs
 
 Full documentation: https://uiseal.io/docs

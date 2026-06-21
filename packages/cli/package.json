@@ -4,8 +4,7 @@
   "license": "Elastic-2.0",
   "type": "module",
   "bin": {
-    "uiseal": "./dist/index.js",
-    "uiseal-admin": "./dist/admin.js"
+    "uiseal": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "files": [

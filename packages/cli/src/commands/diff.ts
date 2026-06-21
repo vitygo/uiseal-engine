@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { glob } from 'glob';
@@ -201,7 +201,7 @@ export const diffCommand = new Command('diff')
       stashed = !stashOut.startsWith('No local changes to save');
 
       process.stderr.write(`Checking out ${base}...\n`);
-      execSync(`git checkout ${base}`, { stdio: 'ignore' });
+      spawnSync('git', ['checkout', base], { stdio: 'ignore' });
 
       process.stderr.write(`Scanning ${base}...\n`);
       baseViolations = await scanFiles(projectRoot, config);

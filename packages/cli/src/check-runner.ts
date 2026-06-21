@@ -150,6 +150,10 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
 }
 
 async function printAppConfigBanner(projectRoot: string): Promise<void> {
+  // Only ping the server if the user has opted in via a token or explicit banner flag.
+  // This keeps uiseal fully offline by default for users on the free tier.
+  if (!process.env['UISEAL_TOKEN'] && process.env['UISEAL_SHOW_BANNER'] !== '1') return;
+
   const apiUrl = process.env['UISEAL_API_URL'] ?? 'https://api.uiseal.io';
   const appConfig = await fetchAppConfig(apiUrl, projectRoot);
 

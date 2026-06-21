@@ -75,6 +75,52 @@ describe('uisealConfigSchema', () => {
       expect(paths.some((p) => p.includes('wcag.level'))).toBe(true);
     }
   });
+
+  describe('baseline.path validation', () => {
+    it('accepts a normal relative baseline path', () => {
+      const result = uisealConfigSchema.safeParse({
+        ...VALID_CONFIG,
+        baseline: { enabled: false, path: '.uiseal-baseline.json' },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a relative path in a subdirectory', () => {
+      const result = uisealConfigSchema.safeParse({
+        ...VALID_CONFIG,
+        baseline: { enabled: false, path: 'config/baseline.json' },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a path traversal attempt using ..', () => {
+      const result = uisealConfigSchema.safeParse({
+        ...VALID_CONFIG,
+        baseline: { enabled: false, path: '../../escape.json' },
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const messages = result.error.issues.map((i) => i.message);
+        expect(messages.some((m) => m.includes("'..'")));
+      }
+    });
+
+    it('rejects an absolute path on Unix-style systems', () => {
+      const result = uisealConfigSchema.safeParse({
+        ...VALID_CONFIG,
+        baseline: { enabled: false, path: '/tmp/evil.json' },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('applies the default safe path when baseline is omitted', () => {
+      const result = uisealConfigSchema.safeParse(VALID_CONFIG);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.baseline.path).toBe('.uiseal-baseline.json');
+      }
+    });
+  });
 });
 
 describe('findClosestColorToken', () => {
