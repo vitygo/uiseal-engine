@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_BIN = resolve(__dirname, '../../dist/index.js');
+const PKG_VERSION = (JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf8')) as { version: string }).version;
 const CLEAN_FIXTURE = resolve(__dirname, '../__fixtures__/clean-fixture');
 const VIOLATING_FIXTURE = resolve(__dirname, '../__fixtures__/violating-fixture');
 
@@ -28,8 +30,8 @@ describe('smoke tests', () => {
     expect(result.stdout).toContain('no-hardcoded-color');
   });
 
-  it('--version prints the version string', () => {
+  it('--version output matches package.json version', () => {
     const result = runCli(['--version'], process.cwd());
-    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(result.stdout.trim()).toBe(PKG_VERSION);
   });
 });

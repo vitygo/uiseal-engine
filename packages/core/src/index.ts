@@ -1,4 +1,5 @@
-export const version = '0.0.1';
+import pkg from '../package.json';
+export const version: string = pkg.version;
 
 export type { Violation, SkeletonNode } from './types.js';
 export { uisealConfigSchema, defineConfig } from './config/schema.js';
