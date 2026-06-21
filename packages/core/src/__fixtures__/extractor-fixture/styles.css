@@ -1,0 +1,30 @@
+/* Blues (perceptually near-identical) — should cluster into one token. */
+.btn-a { color: #3B82F6; }
+.btn-b { color: #3B82F6; }
+.btn-c { color: #3B82F6; }
+.btn-d { background-color: #3C82F7; }
+.btn-e { background-color: #3C82F7; }
+.btn-f { border-color: #3B83F6; }
+.btn-g { border-color: #3B83F6; }
+
+/* Red — perceptually far from blue, must stay in its own cluster. */
+.danger-a { color: #EF4444; }
+.danger-b { color: #EF4444; }
+
+/* Spacing: 16px and 8px each appear >= 2 times; 32px only once (excluded). */
+.card { padding: 16px; margin: 16px; }
+.chip { gap: 8px; margin: 8px; }
+.hero { margin-top: 32px; }
+
+/* Font sizes: 14px appears >= 2 times; 24px only once (excluded). */
+.body    { font-size: 14px; }
+.caption { font-size: 14px; }
+.title   { font-size: 24px; }
+
+/* Font family. */
+.text { font-family: Inter, sans-serif; }
+
+/* Radii: 4px appears >= 2 times; 999px only once (excluded). */
+.pill  { border-radius: 4px; }
+.badge { border-radius: 4px; }
+.round { border-radius: 999px; }

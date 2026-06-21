@@ -1,0 +1,28 @@
+{
+  "name": "@uiseal/cli",
+  "version": "0.0.1",
+  "type": "module",
+  "bin": {
+    "uiseal": "./dist/index.js",
+    "uiseal-admin": "./dist/admin.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.5.1",
+    "@uiseal/core": "workspace:*",
+    "commander": "^12.0.0",
+    "dotenv": "^17.4.2",
+    "glob": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "*",
+    "typescript": "*",
+    "vitest": "*"
+  }
+}

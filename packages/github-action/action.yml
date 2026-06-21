@@ -1,0 +1,28 @@
+name: uiseal Check
+description: Deterministic design-system governance check — blocks PRs that violate design tokens.
+
+inputs:
+  config:
+    description: Path to the uiseal config file (relative to repo root)
+    required: false
+    default: uiseal.config.ts
+  report:
+    description: Post aggregated violation metrics to the uiseal backend (requires uiseal_TOKEN and uiseal_API_URL env vars)
+    required: false
+    default: 'false'
+  token:
+    description: GitHub token used to post PR review comments (pass secrets.GITHUB_TOKEN). Required only for PR comment posting; if omitted the comment step is skipped gracefully.
+    required: false
+    default: ''
+
+outputs:
+  verdict:
+    description: 'pass | needs-attention | blocking'
+  new-violations:
+    description: 'Number of new violations introduced by this PR'
+  fixed-violations:
+    description: 'Number of violations fixed by this PR'
+
+runs:
+  using: node20
+  main: dist/index.js
