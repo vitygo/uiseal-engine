@@ -1,12 +1,26 @@
 {
   "name": "@uiseal/cli",
-  "version": "0.0.1",
+  "version": "0.1.0",
+  "license": "Elastic-2.0",
   "type": "module",
   "bin": {
     "uiseal": "./dist/index.js",
     "uiseal-admin": "./dist/admin.js"
   },
   "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vitygo/uiseal-engine"
+  },
+  "homepage": "https://github.com/vitygo/uiseal-engine#readme",
+  "bugs": {
+    "url": "https://github.com/vitygo/uiseal-engine/issues"
+  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
