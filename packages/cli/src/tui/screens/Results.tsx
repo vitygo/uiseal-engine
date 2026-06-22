@@ -84,39 +84,64 @@ const TAB_ORDER = ['All', 'Design', 'A11y', 'Security', 'Quality', 'variant-spra
 const WINDOW_SIZE = 12;
 
 export default function Results({ result, onBack, onQuit }: ResultsProps) {
-  const { violations, baseline } = result;
+  const { violations, baseline, newViolations, allViolations, baselineCount } = result;
 
+  const hasToggle = (baselineCount ?? 0) > 0;
+  const [showNewOnly, setShowNewOnly] = useState(() => hasToggle);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [cursorIndex, setCursorIndex] = useState(0); // index into selectableRows
   const [detailViolation, setDetailViolation] = useState<Violation | null>(null);
+  const [focusLevel, setFocusLevel] = useState<'category' | 'rule'>('category');
+  const [activeRule, setActiveRule] = useState<string | null>(null);
+  const [activeRuleIndex, setActiveRuleIndex] = useState(0);
+
+  // baseViolations drives tab structure (always full set so categories don't disappear)
+  const baseViolations = allViolations ?? violations;
+  // activeViolations drives counts and the displayed list
+  const activeViolations = showNewOnly
+    ? (newViolations ?? violations)
+    : (allViolations ?? violations);
 
   const allTabs = useMemo(() => {
     const present = new Set<string>();
-    for (const v of violations) present.add(categoryFromRuleId(v.ruleId));
+    for (const v of baseViolations) present.add(categoryFromRuleId(v.ruleId));
     return ['All', ...TAB_ORDER.slice(1).filter((t) => present.has(t))];
-  }, [violations]);
+  }, [baseViolations]);
 
   const activeTab = allTabs[activeTabIndex] ?? 'All';
 
   const tabViolations = useMemo(() => {
-    if (activeTab === 'All') return violations;
-    return violations.filter((v) => categoryFromRuleId(v.ruleId) === activeTab);
-  }, [violations, activeTab]);
+    if (activeTab === 'All') return activeViolations;
+    return activeViolations.filter((v) => categoryFromRuleId(v.ruleId) === activeTab);
+  }, [activeViolations, activeTab]);
+
+  const rulesInActiveCategory = useMemo((): [string, number][] => {
+    const ruleCounts = new Map<string, number>();
+    for (const v of tabViolations) {
+      ruleCounts.set(v.ruleId, (ruleCounts.get(v.ruleId) ?? 0) + 1);
+    }
+    return [...ruleCounts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [tabViolations]);
+
+  const filteredViolations = useMemo(() => {
+    if (!activeRule) return tabViolations;
+    return tabViolations.filter((v) => v.ruleId === activeRule);
+  }, [tabViolations, activeRule]);
 
   const highPriority = useMemo(() => {
     if (activeTab !== 'All') return [];
-    return violations
+    return activeViolations
       .filter(
         (v) =>
           categoryFromRuleId(v.ruleId) === 'variant-sprawl' &&
           v.message.includes('Duplicate:'),
       )
       .slice(0, 4);
-  }, [violations, activeTab]);
+  }, [activeViolations, activeTab]);
 
   const { displayRows, selectableRows } = useMemo(
-    () => buildRows(groupByFile(tabViolations)),
-    [tabViolations],
+    () => buildRows(groupByFile(filteredViolations)),
+    [filteredViolations],
   );
 
   const safeCursorIndex = Math.min(cursorIndex, Math.max(0, selectableRows.length - 1));
@@ -133,31 +158,96 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
   const windowEnd = Math.min(windowStart + WINDOW_SIZE, displayRows.length);
   const visibleRows = displayRows.slice(windowStart, windowEnd);
 
-  const errors = useMemo(() => violations.filter((v) => v.severity === 'error'), [violations]);
+  const errors = useMemo(
+    () => activeViolations.filter((v) => v.severity === 'error'),
+    [activeViolations],
+  );
   const warnings = useMemo(
-    () => violations.filter((v) => v.severity === 'warning'),
-    [violations],
+    () => activeViolations.filter((v) => v.severity === 'warning'),
+    [activeViolations],
   );
   const totalScanned =
     baseline.counts.baselined + baseline.counts.new + baseline.counts.resolved;
 
   useInput(
     (input, key) => {
-      if ((input === '' && key.escape) || input === 'b' || input === 'h') {
+      // Tab: toggle focus between category row and rule row
+      if (key.tab) {
+        if (focusLevel === 'category' && rulesInActiveCategory.length > 0) {
+          const idx = activeRuleIndex < rulesInActiveCategory.length ? activeRuleIndex : 0;
+          setFocusLevel('rule');
+          setActiveRuleIndex(idx);
+          setActiveRule(rulesInActiveCategory[idx]?.[0] ?? null);
+          setCursorIndex(0);
+        } else if (focusLevel === 'rule') {
+          setFocusLevel('category');
+          setActiveRule(null);
+        }
+        return;
+      }
+
+      // Esc: return to category focus if on rule row, otherwise go back
+      if (input === '' && key.escape) {
+        if (focusLevel === 'rule') {
+          setFocusLevel('category');
+          setActiveRule(null);
+          return;
+        }
         onBack();
-      } else if (input === 'q' || (key.ctrl && input === 'c')) {
+        return;
+      }
+
+      if (input === 'b' || input === 'h') {
+        onBack();
+        return;
+      }
+
+      if (input === 'q' || (key.ctrl && input === 'c')) {
         onQuit();
-      } else if (key.leftArrow) {
-        setActiveTabIndex((i) => Math.max(0, i - 1));
-        setCursorIndex(0);
-      } else if (key.rightArrow) {
-        setActiveTabIndex((i) => Math.min(allTabs.length - 1, i + 1));
-        setCursorIndex(0);
-      } else if (key.upArrow) {
+        return;
+      }
+
+      if (key.leftArrow) {
+        if (focusLevel === 'rule') {
+          const newIdx = Math.max(0, activeRuleIndex - 1);
+          setActiveRuleIndex(newIdx);
+          setActiveRule(rulesInActiveCategory[newIdx]?.[0] ?? null);
+          setCursorIndex(0);
+        } else {
+          setActiveTabIndex((i) => Math.max(0, i - 1));
+          setCursorIndex(0);
+          setActiveRule(null);
+          setActiveRuleIndex(0);
+        }
+        return;
+      }
+
+      if (key.rightArrow) {
+        if (focusLevel === 'rule') {
+          const newIdx = Math.min(rulesInActiveCategory.length - 1, activeRuleIndex + 1);
+          setActiveRuleIndex(newIdx);
+          setActiveRule(rulesInActiveCategory[newIdx]?.[0] ?? null);
+          setCursorIndex(0);
+        } else {
+          setActiveTabIndex((i) => Math.min(allTabs.length - 1, i + 1));
+          setCursorIndex(0);
+          setActiveRule(null);
+          setActiveRuleIndex(0);
+        }
+        return;
+      }
+
+      if (key.upArrow) {
         setCursorIndex((i) => Math.max(0, i - 1));
-      } else if (key.downArrow) {
+        return;
+      }
+
+      if (key.downArrow) {
         setCursorIndex((i) => Math.min(selectableRows.length - 1, i + 1));
-      } else if (key.return) {
+        return;
+      }
+
+      if (key.return) {
         const v = selectedRow?.violation ?? null;
         if (v) {
           if (v.ruleId === 'variant-sprawl' && v.compare) {
@@ -166,6 +256,12 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
             openInEditor(v.file, v.line, v.column);
           }
         }
+        return;
+      }
+
+      if (input === 'n' && hasToggle) {
+        setShowNewOnly((s) => !s);
+        setCursorIndex(0);
       }
     },
     { isActive: !detailViolation },
@@ -198,7 +294,7 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
             · {warnings.length} warning{warnings.length !== 1 ? 's' : ''}
           </Text>
         )}
-        {violations.length === 0 && <Text color="#444444">· no violations</Text>}
+        {activeViolations.length === 0 && <Text color="#444444">· no violations</Text>}
       </Box>
 
       {/* Baseline info */}
@@ -213,15 +309,15 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
         </Box>
       )}
 
-      {/* Tab bar */}
+      {/* Category tab bar — Row 1 */}
       {allTabs.length > 1 && (
         <Box flexDirection="row" marginBottom={1}>
           {allTabs.map((tab, i) => {
             const isActive = i === activeTabIndex;
             const count =
               tab === 'All'
-                ? violations.length
-                : violations.filter((v) => categoryFromRuleId(v.ruleId) === tab).length;
+                ? activeViolations.length
+                : activeViolations.filter((v) => categoryFromRuleId(v.ruleId) === tab).length;
             return (
               <Box key={tab} marginRight={1}>
                 <Text
@@ -234,6 +330,43 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
               </Box>
             );
           })}
+        </Box>
+      )}
+
+      {/* Rule tab bar — Row 2 */}
+      {rulesInActiveCategory.length > 0 && (
+        <Box marginBottom={0}>
+          <Text dimColor>
+            {focusLevel === 'category'
+              ? '  ↓ tab to filter by rule'
+              : '  filtering by rule · tab to clear'}
+          </Text>
+        </Box>
+      )}
+      <Box flexDirection="row" flexWrap="wrap" marginBottom={1}>
+        {rulesInActiveCategory.map(([ruleId, count], i) => {
+          const isActive = focusLevel === 'rule' && activeRuleIndex === i;
+          return (
+            <Text
+              key={ruleId}
+              bold={isActive}
+              underline={isActive}
+              dimColor={!isActive}
+            >
+              {isActive ? `[${ruleId}(${count})]` : `${ruleId}(${count})`}{'  '}
+            </Text>
+          );
+        })}
+      </Box>
+
+      {/* Toggle label */}
+      {hasToggle && (
+        <Box marginBottom={1}>
+          <Text color="#333333" dimColor>
+            {showNewOnly
+              ? 'showing new only · n to show all'
+              : 'showing all · n to show new only'}
+          </Text>
         </Box>
       )}
 
@@ -265,8 +398,17 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
         </Box>
       )}
 
+      {/* Active rule filter indicator */}
+      {activeRule && (
+        <Box marginBottom={1}>
+          <Text dimColor>
+            {'  '}rule filter: {activeRule} · {filteredViolations.length} violation{filteredViolations.length !== 1 ? 's' : ''}
+          </Text>
+        </Box>
+      )}
+
       {/* Violations grouped by file */}
-      {tabViolations.length === 0 ? (
+      {filteredViolations.length === 0 ? (
         <Box marginBottom={2}>
           <Text color="#444444">  No violations found.</Text>
         </Box>
@@ -343,14 +485,24 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
             <Text color="#2a2a2a">← → category</Text>
           </Box>
         )}
-        {tabViolations.length > 0 && (
+        {rulesInActiveCategory.length > 0 && (
+          <Box borderStyle="single" borderColor="#1a1a1a" paddingX={1}>
+            <Text color="#2a2a2a">tab · filter by rule</Text>
+          </Box>
+        )}
+        {filteredViolations.length > 0 && (
           <Box borderStyle="single" borderColor="#1a1a1a" paddingX={1}>
             <Text color="#2a2a2a">↑↓ select</Text>
           </Box>
         )}
-        {tabViolations.length > 0 && (
+        {filteredViolations.length > 0 && (
           <Box borderStyle="single" borderColor="#1a1a1a" paddingX={1}>
             <Text color="#2a2a2a">↵ open</Text>
+          </Box>
+        )}
+        {hasToggle && (
+          <Box borderStyle="single" borderColor="#1a1a1a" paddingX={1}>
+            <Text color="#2a2a2a">n · toggle new/all</Text>
           </Box>
         )}
       </Box>

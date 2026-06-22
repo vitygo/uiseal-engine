@@ -36,6 +36,9 @@ export interface CheckResult {
   violations: Violation[];
   hasErrors: boolean;
   baseline: BaselineState;
+  newViolations?: Violation[];
+  allViolations?: Violation[];
+  baselineCount?: number;
 }
 
 export async function runCheck(opts: CheckOptions): Promise<CheckResult> {

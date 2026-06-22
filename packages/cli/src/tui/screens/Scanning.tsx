@@ -95,6 +95,10 @@ export default function Scanning({ onComplete, onBack }: ScanningProps) {
 
         await new Promise<void>((r) => setTimeout(r, 0));
 
+        const hasBaselineFile = fs.existsSync(
+          path.join(process.cwd(), '.uiseal-baseline.json'),
+        );
+
         const { violations: rawViolations } = await analyze({
           files,
           config,
@@ -104,8 +108,16 @@ export default function Scanning({ onComplete, onBack }: ScanningProps) {
 
         if (cancelledRef.current) return;
 
-        // Always show all violations in TUI (discovery mode, not CI gate)
-        const { baseline } = resolveBaselineResult(rawViolations, config, projectRoot);
+        const { violations: newViolations, baseline } = resolveBaselineResult(
+          rawViolations,
+          config,
+          projectRoot,
+        );
+        const allViolations = rawViolations;
+        const baselineCount =
+          hasBaselineFile && baseline.status === 'active'
+            ? baseline.counts.baselined
+            : 0;
 
         const recent = rawViolations
           .slice(0, 8)
@@ -117,9 +129,12 @@ export default function Scanning({ onComplete, onBack }: ScanningProps) {
 
         if (!cancelledRef.current) {
           onComplete({
-            violations: rawViolations,
-            hasErrors: rawViolations.some((v) => v.severity === 'error'),
+            violations: allViolations,
+            hasErrors: allViolations.some((v) => v.severity === 'error'),
             baseline,
+            newViolations,
+            allViolations,
+            baselineCount,
           });
         }
       } catch (err) {
