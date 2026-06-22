@@ -4,16 +4,22 @@
   "scripts": {
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
-    "lint": "pnpm -r run lint"
+    "lint": "pnpm -r run lint",
+    "prepare": "husky"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.2.6"
+    "vitest": "^3.2.6",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0"
   },
   "engines": {
     "node": ">=20",
     "pnpm": ">=9"
   },
-  "packageManager": "pnpm@9.0.0"
+  "packageManager": "pnpm@9.0.0",
+  "lint-staged": {
+    "*.{tsx,jsx,css}": "uiseal check --staged"
+  }
 }

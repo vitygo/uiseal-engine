@@ -7,4 +7,8 @@ export default defineConfig({
   dts: false,
   splitting: false,
   clean: true,
+  esbuildOptions(options) {
+    options.jsx = 'automatic';
+    options.jsxImportSource = 'react';
+  },
 });

@@ -57,7 +57,7 @@ async function scanFiles(projectRoot: string, config: uisealConfig): Promise<Vio
     }
   }
 
-  const violations = analyze({ files, config, rules: allRules });
+  const { violations } = await analyze({ files, config, rules: allRules });
   return violations.map(violationToSnapshot);
 }
 

@@ -46,7 +46,7 @@ baselineCommand
       const files = await scanFiles(projectRoot, config.ignore);
       process.stdout.write(`Scanned ${files.size} files\n`);
 
-      const raw = analyze({ files, config, rules: allRules });
+      const { violations: raw } = await analyze({ files, config, rules: allRules });
       const fv = fingerprintViolations(raw, projectRoot);
       writeBaseline(resolvedBaselinePath, fv, projectRoot);
       process.stdout.write(`Stored ${fv.length} fingerprints in ${resolvedBaselinePath}\n`);
@@ -110,7 +110,7 @@ baselineCommand
 
       if (config.baseline.enabled) {
         const files = await scanFiles(projectRoot, config.ignore);
-        const raw = analyze({ files, config, rules: allRules });
+        const { violations: raw } = await analyze({ files, config, rules: allRules });
         const { baseline } = resolveBaselineResult(raw, config, projectRoot);
         const { baselined, new: newCount, resolved } = baseline.counts;
         process.stdout.write(`Frozen        : ${baselined}\n`);
@@ -147,7 +147,7 @@ baselineCommand
       const files = await scanFiles(projectRoot, config.ignore);
       process.stdout.write(`Scanned ${files.size} files\n`);
 
-      const raw = analyze({ files, config, rules: allRules });
+      const { violations: raw } = await analyze({ files, config, rules: allRules });
       const { pruned, remaining } = pruneBaseline(resolvedBaselinePath, raw, projectRoot);
 
       if (pruned === 0) {

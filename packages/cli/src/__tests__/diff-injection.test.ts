@@ -29,7 +29,7 @@ vi.mock('@uiseal/core', () => ({
     },
     projectRoot: '/tmp',
   }),
-  analyze: vi.fn().mockReturnValue([]),
+  analyze: vi.fn().mockResolvedValue({ violations: [] }),
   allRules: [],
   diffScans: vi.fn().mockReturnValue({
     verdict: 'ok',
