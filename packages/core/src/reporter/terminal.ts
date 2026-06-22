@@ -6,12 +6,10 @@ const BOLD = '\x1b[1m';
 const DIM = '\x1b[2m';
 const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
-const CYAN = '\x1b[36m';
 const WHITE = '\x1b[37m';
 
 function red(s: string): string { return RED + s + RESET; }
 function yellow(s: string): string { return YELLOW + s + RESET; }
-function cyan(s: string): string { return CYAN + s + RESET; }
 function bold(s: string): string { return BOLD + s + RESET; }
 function dim(s: string): string { return DIM + s + RESET; }
 
@@ -33,7 +31,6 @@ function isA11yRule(ruleId: string): boolean {
   return A11Y_RULE_IDS.has(ruleId);
 }
 
-// Word-wraps plain text. Returns one segment per output line.
 function wrapWords(text: string, width: number): string[] {
   if (width <= 0) return [text];
   const words = text.split(' ');
@@ -54,79 +51,152 @@ function wrapWords(text: string, width: number): string[] {
   return result.length ? result : [''];
 }
 
-export function formatReport(violations: Violation[]): string {
+// Indentation scheme:
+//   file header  →  2 spaces
+//   location     →  4 spaces
+//   sev/msg/fix  →  6 spaces
+//
+// Visible prefix lengths used for wrap-width calculations:
+//   "      error  " = 6+5+2 = 13
+//   "      fix: "  = 6+4+1 = 11
+const FILE_PREFIX = '  ';
+const LOC_PREFIX = '    ';
+const SEV_PREFIX = '      ';
+const MSG_VIS = 13;
+const FIX_VIS = 11;
+const MSG_CONT = ' '.repeat(MSG_VIS);
+const FIX_CONT = ' '.repeat(FIX_VIS);
+
+export interface FormatOptions {
+  verbose?: boolean;
+}
+
+// Append verbose-format lines for a single violation (location line already pushed by caller).
+function appendVerboseLines(v: Violation, lines: string[], cols: number): void {
+  const sev = v.severity === 'error' ? red('error') : yellow('warn ');
+  const ruleIdPlain = `[${v.ruleId}]`;
+  const a11y = isA11yRule(v.ruleId) ? '♿ ' : '';
+
+  if (v.ruleId === 'variant-sprawl') {
+    // Extract the embedded "(/path/to/file.ext:line)" from the message and
+    // render it on its own "Duplicate:" label line.
+    const pathMatch = v.message.match(/\(([^)\s]+\.(tsx?|jsx?|css):\d+)\)/);
+
+    if (pathMatch?.[1]) {
+      const filePath = pathMatch[1]!;
+      const matchStr = pathMatch[0]!;
+      const matchIdx = v.message.indexOf(matchStr);
+      const beforePath = v.message.slice(0, matchIdx).trimEnd();
+      let afterPath = v.message.slice(matchIdx + matchStr.length);
+      // Strip "… Possible duplicate variant — " boilerplate between path and
+      // the actionable advice fragment.
+      afterPath = afterPath
+        .replace(/^\s*\.?\s*Possible duplicate variant\s*[—–-]\s*/i, '')
+        .trim();
+      if (afterPath) {
+        afterPath = afterPath.charAt(0).toUpperCase() + afterPath.slice(1);
+      }
+
+      lines.push(`${SEV_PREFIX}${sev}  ${WHITE}${beforePath}${RESET}`);
+      lines.push(`${MSG_CONT}${dim('Duplicate:')} ${filePath}`);
+      if (afterPath) {
+        if (MSG_VIS + afterPath.length + 2 + ruleIdPlain.length <= cols) {
+          lines.push(`${MSG_CONT}${WHITE}${afterPath}${RESET}  ${dim(ruleIdPlain)}`);
+        } else {
+          lines.push(`${MSG_CONT}${WHITE}${afterPath}${RESET}`);
+          lines.push(`${MSG_CONT}${dim(ruleIdPlain)}`);
+        }
+      } else {
+        lines.push(`${MSG_CONT}${dim(ruleIdPlain)}`);
+      }
+      return;
+    }
+    // Fall through to standard verbose if no path found in message (capped summary).
+  }
+
+  // Standard verbose: wrapped message with ruleId appended to last segment.
+  const msgPrefix = `${SEV_PREFIX}${sev}  `;
+  const msgWidth = cols - MSG_VIS;
+  const segments = wrapWords(a11y + v.message, msgWidth);
+
+  segments.forEach((seg, i) => {
+    const prefix = i === 0 ? msgPrefix : MSG_CONT;
+    const isLast = i === segments.length - 1;
+    if (isLast) {
+      if (MSG_VIS + seg.length + 2 + ruleIdPlain.length <= cols) {
+        lines.push(`${prefix}${WHITE}${seg}${RESET}  ${dim(ruleIdPlain)}`);
+      } else {
+        lines.push(`${prefix}${WHITE}${seg}${RESET}`);
+        lines.push(`${MSG_CONT}${dim(ruleIdPlain)}`);
+      }
+    } else {
+      lines.push(`${prefix}${WHITE}${seg}${RESET}`);
+    }
+  });
+
+  if (v.fix) {
+    const fixPrefix = `${SEV_PREFIX}${dim('fix:')} `;
+    const fixWidth = cols - FIX_VIS;
+    const fixSegs = wrapWords(v.fix.suggested, fixWidth);
+    fixSegs.forEach((seg, i) => {
+      lines.push(`${i === 0 ? fixPrefix : FIX_CONT}${seg}`);
+    });
+  }
+}
+
+export function formatReport(violations: Violation[], opts?: FormatOptions): string {
   if (violations.length === 0) {
     return bold('✔  No violations found.\n');
+  }
+
+  // Compact mode is default when violation count exceeds 50; --verbose overrides.
+  const useVerbose = opts?.verbose === true || violations.length <= 50;
+
+  // Group violations by file, preserving scan order within each file.
+  const grouped = new Map<string, Violation[]>();
+  for (const v of violations) {
+    const arr = grouped.get(v.file);
+    if (arr) arr.push(v);
+    else grouped.set(v.file, [v]);
   }
 
   const cols = process.stdout.columns ?? 80;
   const lines: string[] = [''];
 
-  // Visible widths of fixed prefixes:
-  //   msg line:  '  ' (2) + sev (5) + '  ' (2) = 9
-  //   fix line:  '  ' (2) + 'fix:' (4) + ' ' (1) = 7
-  const MSG_PREFIX_VIS = 9;
-  const FIX_PREFIX_VIS = 7;
-  const msgIndent = ' '.repeat(MSG_PREFIX_VIS);
-  const fixIndent = ' '.repeat(FIX_PREFIX_VIS);
+  for (const [file, fileViolations] of grouped) {
+    lines.push(`${FILE_PREFIX}${dim(relativeFile(file))}`);
 
-  const filesSeen = new Set<string>();
-  for (const v of violations) {
-    filesSeen.add(v.file);
+    for (const v of fileViolations) {
+      const isVariantSprawl = v.ruleId === 'variant-sprawl';
 
-    // File path + location: own line, never wrapped.
-    const file = cyan(relativeFile(v.file));
-    const loc = dim(`${v.line}:${v.column}`);
-    lines.push(`${file}:${loc}`);
-
-    // Severity + message + ruleId: message wraps, continuation indented to MSG_PREFIX_VIS.
-    const sev = v.severity === 'error' ? red('error') : yellow('warn ');
-    const msgPrefix = `  ${sev}  `;
-    const ruleIdPlain = `[${v.ruleId}]`;
-    const a11yPrefix = isA11yRule(v.ruleId) ? '♿ ' : '';
-    const msgWidth = cols - MSG_PREFIX_VIS;
-    const segments = wrapWords(a11yPrefix + v.message, msgWidth);
-
-    segments.forEach((seg, i) => {
-      const prefix = i === 0 ? msgPrefix : msgIndent;
-      const isLast = i === segments.length - 1;
-      if (isLast) {
-        // Append ruleId to last segment if it fits, otherwise on a continuation line.
-        if (MSG_PREFIX_VIS + seg.length + 2 + ruleIdPlain.length <= cols) {
-          lines.push(`${prefix}${WHITE}${seg}${RESET}  ${dim(ruleIdPlain)}`);
-        } else {
-          lines.push(`${prefix}${WHITE}${seg}${RESET}`);
-          lines.push(`${msgIndent}${dim(ruleIdPlain)}`);
-        }
+      if (useVerbose || isVariantSprawl) {
+        // Verbose: location on its own line, then wrapped sev+message+ruleId.
+        lines.push(`${LOC_PREFIX}${dim(`${v.line}:${v.column}`)}`);
+        appendVerboseLines(v, lines, cols);
       } else {
-        lines.push(`${prefix}${WHITE}${seg}${RESET}`);
+        // Compact: single line — loc (padded to 6) + sev + ruleId + message.
+        const loc = `${v.line}:${v.column}`;
+        const sev = v.severity === 'error' ? red('error') : yellow('warn ');
+        const a11y = isA11yRule(v.ruleId) ? '♿ ' : '';
+        lines.push(
+          `${LOC_PREFIX}${dim(loc.padEnd(6))}${sev}  ${dim(v.ruleId)}  ${WHITE}${a11y}${v.message}${RESET}`,
+        );
       }
-    });
-
-    // Fix suggestion: wraps, continuation indented to FIX_PREFIX_VIS.
-    if (v.fix) {
-      const fixPrefix = `  ${dim('fix:')} `;
-      const fixWidth = cols - FIX_PREFIX_VIS;
-      const fixSegments = wrapWords(v.fix.suggested, fixWidth);
-      fixSegments.forEach((seg, i) => {
-        lines.push(`${i === 0 ? fixPrefix : fixIndent}${seg}`);
-      });
     }
+
+    lines.push('');
   }
 
-  lines.push('');
-
+  // Summary — printed exactly once, at the end.
   const errorCount = violations.filter((v) => v.severity === 'error').length;
   const warnCount = violations.filter((v) => v.severity === 'warning').length;
-  const fileCount = filesSeen.size;
+  const fileCount = grouped.size;
 
   const parts: string[] = [];
   if (errorCount > 0) parts.push(red(`${errorCount} error${errorCount !== 1 ? 's' : ''}`));
   if (warnCount > 0) parts.push(yellow(`${warnCount} warning${warnCount !== 1 ? 's' : ''}`));
 
-  lines.push(
-    bold(`✖  ${parts.join(', ')} in ${fileCount} file${fileCount !== 1 ? 's' : ''}`),
-  );
+  lines.push(bold(`✖  ${parts.join(', ')} in ${fileCount} file${fileCount !== 1 ? 's' : ''}`));
   lines.push('');
 
   return lines.join('\n');

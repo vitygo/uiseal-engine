@@ -25,6 +25,7 @@ export type { Plan, LicenseState, ValidateResponse } from './license/index.js';
 export { fetchAppConfig } from './app-config/index.js';
 export type { AppConfigState } from './app-config/index.js';
 export { formatReport } from './reporter/terminal.js';
+export type { FormatOptions } from './reporter/terminal.js';
 export { extract } from './extractor/index.js';
 export type { ExtractedTokens } from './extractor/index.js';
 export { clusterColors } from './extractor/cluster.js';

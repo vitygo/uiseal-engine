@@ -9,9 +9,10 @@ export const checkCommand = new Command('check')
   .option('--report', 'POST aggregated metrics to uiseal_API_URL')
   .option('--update-baseline', 'Scan, write all current violations to the baseline file, exit 0')
   .option('--no-baseline', 'Ignore the baseline entirely and report all violations')
+  .option('--verbose', 'Show full verbose output even when violation count exceeds 50')
   .action(async (
     scanPath: string | undefined,
-    opts: { config?: string; staged?: boolean; report?: boolean; updateBaseline?: boolean; baseline?: boolean },
+    opts: { config?: string; staged?: boolean; report?: boolean; updateBaseline?: boolean; baseline?: boolean; verbose?: boolean },
   ) => {
     try {
       const { hasErrors } = await runCheck({
@@ -22,8 +23,11 @@ export const checkCommand = new Command('check')
         updateBaseline: opts.updateBaseline,
         // Commander turns --no-baseline into baseline=false.
         noBaseline: opts.baseline === false,
+        verbose: opts.verbose,
       });
-      process.exit(hasErrors ? 1 : 0);
+      // Use exitCode rather than process.exit() so Node.js drains stdout before
+      // terminating — large reports would otherwise lose the trailing summary.
+      process.exitCode = hasErrors ? 1 : 0;
     } catch (err) {
       process.stderr.write(`Error: ${(err as Error).message}\n`);
       process.exit(2);

@@ -29,6 +29,7 @@ export interface CheckOptions {
   scanPath?: string;
   updateBaseline?: boolean;
   noBaseline?: boolean;
+  verbose?: boolean;
 }
 
 export interface CheckResult {
@@ -106,7 +107,7 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
 
   // --no-baseline: ignore baseline entirely and report everything.
   if (opts.noBaseline) {
-    process.stdout.write(formatReport(rawViolations));
+    process.stdout.write(formatReport(rawViolations, { verbose: opts.verbose }));
     if (opts.report) await postMetrics(rawViolations);
     await printAppConfigBanner(projectRoot);
     const total = rawViolations.length;
@@ -138,7 +139,7 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
     }
   }
 
-  process.stdout.write(formatReport(violations));
+  process.stdout.write(formatReport(violations, { verbose: opts.verbose }));
   if (opts.report) await postMetrics(violations);
   await printAppConfigBanner(projectRoot);
 
