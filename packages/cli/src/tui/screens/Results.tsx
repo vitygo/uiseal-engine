@@ -3,6 +3,8 @@ import { Box, Text, useInput } from 'ink';
 import path from 'node:path';
 import type { CheckResult } from '../../check-runner.js';
 import type { Violation } from '@uiseal/core';
+import { openInEditor } from '../utils/openInEditor.js';
+import VariantSprawlDetail from './VariantSprawlDetail.js';
 
 interface ResultsProps {
   result: CheckResult;
@@ -78,6 +80,8 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
 
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [selectedViolationIdx, setSelectedViolationIdx] = useState(0);
+  const [detailViolation, setDetailViolation] = useState<Violation | null>(null);
 
   const allTabs = useMemo(() => {
     const present = new Set<string>();
@@ -105,9 +109,14 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
 
   const rows = useMemo(() => flattenRows(groupByFile(tabViolations)), [tabViolations]);
   const totalRows = rows.length;
-
   const maxScroll = Math.max(0, totalRows - WINDOW_SIZE);
   const visibleRows = rows.slice(scrollOffset, scrollOffset + WINDOW_SIZE);
+
+  const safeSelectedViolationIdx = Math.min(
+    selectedViolationIdx,
+    Math.max(0, tabViolations.length - 1),
+  );
+  const selectedViolation = tabViolations[safeSelectedViolationIdx] ?? null;
 
   const errors = useMemo(() => violations.filter((v) => v.severity === 'error'), [violations]);
   const warnings = useMemo(
@@ -117,26 +126,69 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
   const totalScanned =
     baseline.counts.baselined + baseline.counts.new + baseline.counts.resolved;
 
-  useInput((input, key) => {
-    if ((input === '' && key.escape) || input === 'b') {
-      onBack();
-    } else if (input === 'q' || (key.ctrl && input === 'c')) {
-      onQuit();
-    } else if (key.leftArrow) {
-      setActiveTabIndex((i) => Math.max(0, i - 1));
-      setScrollOffset(0);
-    } else if (key.rightArrow) {
-      setActiveTabIndex((i) => Math.min(allTabs.length - 1, i + 1));
-      setScrollOffset(0);
-    } else if (key.upArrow) {
-      setScrollOffset((o) => Math.max(0, o - 1));
-    } else if (key.downArrow) {
-      setScrollOffset((o) => Math.min(maxScroll, o + 1));
-    }
-  });
+  useInput(
+    (input, key) => {
+      if ((input === '' && key.escape) || input === 'b') {
+        onBack();
+      } else if (input === 'q' || (key.ctrl && input === 'c')) {
+        onQuit();
+      } else if (key.leftArrow) {
+        setActiveTabIndex((i) => Math.max(0, i - 1));
+        setScrollOffset(0);
+        setSelectedViolationIdx(0);
+      } else if (key.rightArrow) {
+        setActiveTabIndex((i) => Math.min(allTabs.length - 1, i + 1));
+        setScrollOffset(0);
+        setSelectedViolationIdx(0);
+      } else if (key.upArrow) {
+        const newIdx = Math.max(0, safeSelectedViolationIdx - 1);
+        setSelectedViolationIdx(newIdx);
+        const newV = tabViolations[newIdx];
+        if (newV) {
+          const newRowIdx = rows.findIndex(
+            (r) => r.type === 'violation' && r.violation === newV,
+          );
+          if (newRowIdx >= 0 && newRowIdx < scrollOffset) {
+            setScrollOffset(newRowIdx);
+          }
+        }
+      } else if (key.downArrow) {
+        const newIdx = Math.min(tabViolations.length - 1, safeSelectedViolationIdx + 1);
+        setSelectedViolationIdx(newIdx);
+        const newV = tabViolations[newIdx];
+        if (newV) {
+          const newRowIdx = rows.findIndex(
+            (r) => r.type === 'violation' && r.violation === newV,
+          );
+          if (newRowIdx >= 0 && newRowIdx >= scrollOffset + WINDOW_SIZE) {
+            setScrollOffset(Math.min(maxScroll, newRowIdx - WINDOW_SIZE + 1));
+          }
+        }
+      } else if (key.return) {
+        const v = tabViolations[safeSelectedViolationIdx];
+        if (v) {
+          if (v.ruleId === 'variant-sprawl' && v.compare) {
+            setDetailViolation(v);
+          } else {
+            openInEditor(v.file, v.line, v.column);
+          }
+        }
+      }
+    },
+    { isActive: !detailViolation },
+  );
 
   const showStart = totalRows === 0 ? 0 : scrollOffset + 1;
   const showEnd = Math.min(scrollOffset + WINDOW_SIZE, totalRows);
+
+  if (detailViolation) {
+    return (
+      <VariantSprawlDetail
+        violation={detailViolation}
+        onBack={() => setDetailViolation(null)}
+      />
+    );
+  }
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
@@ -241,15 +293,22 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
               );
             }
             const v = row.violation;
+            const isSelected = selectedViolation === v;
             const firstLine = v.message.split('\n')[0] ?? '';
             const msg = firstLine.length > 42 ? firstLine.slice(0, 39) + '…' : firstLine;
             return (
               <Box key={`v-${i}`} flexDirection="row">
+                <Text color={isSelected ? '#888888' : '#1e1e1e'}>
+                  {isSelected ? '› ' : '  '}
+                </Text>
+                <Text color={isSelected ? '#888888' : '#2a2a2a'}>
+                  {String(v.line).padStart(4)}:{String(v.column).padEnd(3)}
+                </Text>
                 <Text color="#1e1e1e">{'  '}</Text>
-                <Text color="#2a2a2a">{String(v.line).padStart(4)}:{String(v.column).padEnd(3)}</Text>
-                <Text color="#1e1e1e">{'  '}</Text>
-                <Text color="#333333">{v.ruleId.padEnd(20)}</Text>
-                <Text color="#444444" dimColor>
+                <Text color={isSelected ? '#aaaaaa' : '#333333'} bold={isSelected}>
+                  {v.ruleId.padEnd(20)}
+                </Text>
+                <Text color={isSelected ? '#888888' : '#444444'} dimColor={!isSelected}>
                   {msg}
                 </Text>
               </Box>
@@ -291,12 +350,17 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
         </Box>
         {allTabs.length > 1 && (
           <Box borderStyle="single" borderColor="#1a1a1a" paddingX={1}>
-            <Text color="#2a2a2a">← → switch category</Text>
+            <Text color="#2a2a2a">← → category</Text>
           </Box>
         )}
-        {totalRows > WINDOW_SIZE && (
+        {tabViolations.length > 0 && (
           <Box borderStyle="single" borderColor="#1a1a1a" paddingX={1}>
-            <Text color="#2a2a2a">↑ ↓ scroll</Text>
+            <Text color="#2a2a2a">↑↓ select</Text>
+          </Box>
+        )}
+        {tabViolations.length > 0 && (
+          <Box borderStyle="single" borderColor="#1a1a1a" paddingX={1}>
+            <Text color="#2a2a2a">↵ open</Text>
           </Box>
         )}
       </Box>
