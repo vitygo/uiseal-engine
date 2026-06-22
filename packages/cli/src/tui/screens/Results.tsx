@@ -57,19 +57,27 @@ function groupByFile(violations: Violation[]): FileGroup[] {
     .map(([file, vs]) => ({ file, violations: vs }));
 }
 
-type FlatRow =
-  | { type: 'file-header'; file: string }
-  | { type: 'violation'; violation: Violation };
+type DisplayRow =
+  | { type: 'header'; file: string }
+  | { type: 'violation'; violation: Violation; displayIndex: number };
 
-function flattenRows(grouped: FileGroup[]): FlatRow[] {
-  const rows: FlatRow[] = [];
+type SelectableRow = { violation: Violation; displayIndex: number };
+
+function buildRows(grouped: FileGroup[]): {
+  displayRows: DisplayRow[];
+  selectableRows: SelectableRow[];
+} {
+  const displayRows: DisplayRow[] = [];
+  const selectableRows: SelectableRow[] = [];
   for (const { file, violations } of grouped) {
-    rows.push({ type: 'file-header', file });
+    displayRows.push({ type: 'header', file });
     for (const v of violations) {
-      rows.push({ type: 'violation', violation: v });
+      const displayIndex = displayRows.length;
+      displayRows.push({ type: 'violation', violation: v, displayIndex });
+      selectableRows.push({ violation: v, displayIndex });
     }
   }
-  return rows;
+  return { displayRows, selectableRows };
 }
 
 const TAB_ORDER = ['All', 'Design', 'A11y', 'Security', 'Quality', 'variant-sprawl'];
@@ -79,8 +87,7 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
   const { violations, baseline } = result;
 
   const [activeTabIndex, setActiveTabIndex] = useState(0);
-  const [scrollOffset, setScrollOffset] = useState(0);
-  const [selectedViolationIdx, setSelectedViolationIdx] = useState(0);
+  const [cursorIndex, setCursorIndex] = useState(0); // index into selectableRows
   const [detailViolation, setDetailViolation] = useState<Violation | null>(null);
 
   const allTabs = useMemo(() => {
@@ -107,16 +114,24 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
       .slice(0, 4);
   }, [violations, activeTab]);
 
-  const rows = useMemo(() => flattenRows(groupByFile(tabViolations)), [tabViolations]);
-  const totalRows = rows.length;
-  const maxScroll = Math.max(0, totalRows - WINDOW_SIZE);
-  const visibleRows = rows.slice(scrollOffset, scrollOffset + WINDOW_SIZE);
-
-  const safeSelectedViolationIdx = Math.min(
-    selectedViolationIdx,
-    Math.max(0, tabViolations.length - 1),
+  const { displayRows, selectableRows } = useMemo(
+    () => buildRows(groupByFile(tabViolations)),
+    [tabViolations],
   );
-  const selectedViolation = tabViolations[safeSelectedViolationIdx] ?? null;
+
+  const safeCursorIndex = Math.min(cursorIndex, Math.max(0, selectableRows.length - 1));
+  const selectedRow = selectableRows[safeCursorIndex] ?? null;
+  const selectedDisplayIndex = selectedRow?.displayIndex ?? 0;
+
+  const windowStart = Math.max(
+    0,
+    Math.min(
+      selectedDisplayIndex - Math.floor(WINDOW_SIZE / 2),
+      displayRows.length - WINDOW_SIZE,
+    ),
+  );
+  const windowEnd = Math.min(windowStart + WINDOW_SIZE, displayRows.length);
+  const visibleRows = displayRows.slice(windowStart, windowEnd);
 
   const errors = useMemo(() => violations.filter((v) => v.severity === 'error'), [violations]);
   const warnings = useMemo(
@@ -128,44 +143,22 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
 
   useInput(
     (input, key) => {
-      if ((input === '' && key.escape) || input === 'b') {
+      if ((input === '' && key.escape) || input === 'b' || input === 'h') {
         onBack();
       } else if (input === 'q' || (key.ctrl && input === 'c')) {
         onQuit();
       } else if (key.leftArrow) {
         setActiveTabIndex((i) => Math.max(0, i - 1));
-        setScrollOffset(0);
-        setSelectedViolationIdx(0);
+        setCursorIndex(0);
       } else if (key.rightArrow) {
         setActiveTabIndex((i) => Math.min(allTabs.length - 1, i + 1));
-        setScrollOffset(0);
-        setSelectedViolationIdx(0);
+        setCursorIndex(0);
       } else if (key.upArrow) {
-        const newIdx = Math.max(0, safeSelectedViolationIdx - 1);
-        setSelectedViolationIdx(newIdx);
-        const newV = tabViolations[newIdx];
-        if (newV) {
-          const newRowIdx = rows.findIndex(
-            (r) => r.type === 'violation' && r.violation === newV,
-          );
-          if (newRowIdx >= 0 && newRowIdx < scrollOffset) {
-            setScrollOffset(newRowIdx);
-          }
-        }
+        setCursorIndex((i) => Math.max(0, i - 1));
       } else if (key.downArrow) {
-        const newIdx = Math.min(tabViolations.length - 1, safeSelectedViolationIdx + 1);
-        setSelectedViolationIdx(newIdx);
-        const newV = tabViolations[newIdx];
-        if (newV) {
-          const newRowIdx = rows.findIndex(
-            (r) => r.type === 'violation' && r.violation === newV,
-          );
-          if (newRowIdx >= 0 && newRowIdx >= scrollOffset + WINDOW_SIZE) {
-            setScrollOffset(Math.min(maxScroll, newRowIdx - WINDOW_SIZE + 1));
-          }
-        }
+        setCursorIndex((i) => Math.min(selectableRows.length - 1, i + 1));
       } else if (key.return) {
-        const v = tabViolations[safeSelectedViolationIdx];
+        const v = selectedRow?.violation ?? null;
         if (v) {
           if (v.ruleId === 'variant-sprawl' && v.compare) {
             setDetailViolation(v);
@@ -177,9 +170,6 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
     },
     { isActive: !detailViolation },
   );
-
-  const showStart = totalRows === 0 ? 0 : scrollOffset + 1;
-  const showEnd = Math.min(scrollOffset + WINDOW_SIZE, totalRows);
 
   if (detailViolation) {
     return (
@@ -283,7 +273,7 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
       ) : (
         <Box flexDirection="column" marginBottom={1}>
           {visibleRows.map((row, i) => {
-            if (row.type === 'file-header') {
+            if (row.type === 'header') {
               return (
                 <Box key={`h-${i}`} marginTop={i > 0 ? 1 : 0}>
                   <Text color="#2a2a2a" dimColor>
@@ -293,7 +283,7 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
               );
             }
             const v = row.violation;
-            const isSelected = selectedViolation === v;
+            const isSelected = selectedRow != null && v === selectedRow.violation;
             const firstLine = v.message.split('\n')[0] ?? '';
             const msg = firstLine.length > 42 ? firstLine.slice(0, 39) + '…' : firstLine;
             return (
@@ -318,10 +308,10 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
       )}
 
       {/* Scroll indicator */}
-      {totalRows > WINDOW_SIZE && (
+      {selectableRows.length > WINDOW_SIZE && (
         <Box marginBottom={1}>
           <Text color="#2a2a2a" dimColor>
-            showing {showStart}–{showEnd} of {totalRows}
+            showing {safeCursorIndex + 1} of {selectableRows.length}
           </Text>
         </Box>
       )}
@@ -343,7 +333,7 @@ export default function Results({ result, onBack, onQuit }: ResultsProps) {
       {/* Action row */}
       <Box flexDirection="row" gap={2}>
         <Box borderStyle="single" borderColor="#222222" paddingX={1}>
-          <Text color="#555555">b · back</Text>
+          <Text color="#555555">b/h · back</Text>
         </Box>
         <Box borderStyle="single" borderColor="#1e1e1e" paddingX={1}>
           <Text color="#333333">q · quit</Text>

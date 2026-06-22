@@ -18,7 +18,7 @@ export default function CommandOutput({ title, output, isLoading, onBack }: Comm
   const visibleLines = lines.slice(scrollOffset, scrollOffset + WINDOW_SIZE);
 
   useInput((input, key) => {
-    if (key.escape || input === 'b') {
+    if (key.escape || input === 'b' || input === 'h') {
       onBack();
     } else if (key.upArrow) {
       setScrollOffset((o) => Math.max(0, o - 1));
@@ -56,7 +56,7 @@ export default function CommandOutput({ title, output, isLoading, onBack }: Comm
       )}
 
       <Box marginTop={1}>
-        <Text color="#222222">esc/b · back{!isLoading && lines.length > WINDOW_SIZE ? '  ↑↓ · scroll' : ''}</Text>
+        <Text color="#222222">esc/b/h · back{!isLoading && lines.length > WINDOW_SIZE ? '  ↑↓ · scroll' : ''}</Text>
       </Box>
     </Box>
   );

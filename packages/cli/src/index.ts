@@ -1,6 +1,7 @@
 import { config as loadDotenv } from 'dotenv';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
+import readline from 'node:readline';
 import { program } from 'commander';
 import { version } from '@uiseal/core';
 import { checkCommand } from './commands/check.js';
@@ -48,15 +49,20 @@ if (isInteractive) {
     if (isSetupCmd) {
       await new Promise<void>((res) => proc.on('exit', () => res()));
       process.stdout.write('\nPress any key to restart UISeal… ');
+      readline.emitKeypressEvents(process.stdin);
       if ((process.stdin as NodeJS.ReadStream).isTTY) {
         (process.stdin as NodeJS.ReadStream).setRawMode(true);
       }
       process.stdin.resume();
-      await new Promise<void>((res) => process.stdin.once('data', () => res()));
-      if ((process.stdin as NodeJS.ReadStream).isTTY) {
-        (process.stdin as NodeJS.ReadStream).setRawMode(false);
-      }
-      process.stdin.pause();
+      await new Promise<void>((res) => {
+        process.stdin.once('keypress', () => {
+          if ((process.stdin as NodeJS.ReadStream).isTTY) {
+            (process.stdin as NodeJS.ReadStream).setRawMode(false);
+          }
+          process.stdin.pause();
+          res();
+        });
+      });
       process.stdout.write('\n');
       // Loop restarts, re-rendering the TUI
     } else {

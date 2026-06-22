@@ -17,7 +17,7 @@ export default function BaselineMenu({ onSelect, onBack }: BaselineMenuProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useInput((input, key) => {
-    if (key.escape || input === 'b') {
+    if (key.escape || input === 'b' || input === 'h') {
       onBack();
     } else if (key.upArrow) {
       setSelectedIndex((i) => Math.max(0, i - 1));
@@ -62,7 +62,7 @@ export default function BaselineMenu({ onSelect, onBack }: BaselineMenuProps) {
       </Box>
 
       <Box>
-        <Text color="#2a2a2a">↑↓ navigate  ↵ run  esc/b back</Text>
+        <Text color="#2a2a2a">↑↓ navigate  ↵ run  esc/b/h back</Text>
       </Box>
     </Box>
   );

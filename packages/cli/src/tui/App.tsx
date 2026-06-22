@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Box, Text, useApp } from 'ink';
+import { Box, Text, useApp, useInput } from 'ink';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import Home from './screens/Home.js';
 import Scanning from './screens/Scanning.js';
@@ -17,7 +19,33 @@ type Screen =
   | 'launching'
   | 'baseline-menu'
   | 'diff-input'
-  | 'command-output';
+  | 'command-output'
+  | 'init-confirm';
+
+function InitConfirm({
+  path,
+  onForce,
+  onBack,
+}: {
+  path: string;
+  onForce: () => void;
+  onBack: () => void;
+}) {
+  useInput((input, key) => {
+    if (input === 'r') onForce();
+    else if (input === 'b' || input === 'h' || key.escape) onBack();
+  });
+
+  return (
+    <Box flexDirection="column" paddingX={2} paddingY={1} gap={1}>
+      <Text color="yellow">Config already exists at {path}</Text>
+      <Box flexDirection="column">
+        <Text>{'  '}<Text color="cyan">r</Text>{'  · reinitialize (--force overwrite)'}</Text>
+        <Text>{'  '}<Text color="cyan">b/h</Text>{' · cancel'}</Text>
+      </Box>
+    </Box>
+  );
+}
 
 interface AppProps {
   onLaunchCommand: (args: string[]) => void;
@@ -31,6 +59,7 @@ export default function App({ onLaunchCommand }: AppProps) {
   const [commandTitle, setCommandTitle] = useState('');
   const [commandOutput, setCommandOutput] = useState('');
   const [commandLoading, setCommandLoading] = useState(false);
+  const [initConfirmPath, setInitConfirmPath] = useState('');
   const runningProcRef = useRef<ChildProcess | null>(null);
 
   useEffect(() => {
@@ -78,8 +107,18 @@ export default function App({ onLaunchCommand }: AppProps) {
       setScreen('baseline-menu');
     } else if (cmd === 'diff') {
       setScreen('diff-input');
+    } else if (cmd === 'init') {
+      const candidates = ['uiseal.config.json', 'uiseal.config.ts'];
+      const existing = candidates.find((f) => existsSync(join(process.cwd(), f)));
+      if (existing) {
+        setInitConfirmPath(join(process.cwd(), existing));
+        setScreen('init-confirm');
+      } else {
+        setActiveCommand(cmd);
+        setScreen('launching');
+      }
     } else {
-      // init, install-hooks: need full terminal control — exit TUI
+      // install-hooks: needs full terminal control — exit TUI
       setActiveCommand(cmd);
       setScreen('launching');
     }
@@ -104,6 +143,19 @@ export default function App({ onLaunchCommand }: AppProps) {
       <Box paddingX={2} paddingY={1}>
         <Text color="#666666">Launching uiseal {activeCommand}…</Text>
       </Box>
+    );
+  }
+
+  if (screen === 'init-confirm') {
+    return (
+      <InitConfirm
+        path={initConfirmPath}
+        onForce={() => {
+          onLaunchCommand(['init', '--force']);
+          exit();
+        }}
+        onBack={handleBack}
+      />
     );
   }
 
