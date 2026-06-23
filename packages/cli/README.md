@@ -1,100 +1,144 @@
 # @uiseal/cli
 
-Deterministic design-system governance for human and AI-generated code.
+Design-system governance CLI for JSX/TSX and CSS codebases. Runs as an interactive TUI when invoked without arguments in a TTY; falls through to a standard CLI when arguments are provided or stdin is not a TTY.
 
 ## Installation
 
-```
-npm install --save-dev @uiseal/cli
+```sh
+npm install -g @uiseal/cli
 ```
 
-## Commands
+## Quick start
+
+```sh
+uiseal           # launch interactive TUI
+uiseal check     # non-interactive scan, exits 1 on errors
+```
+
+## TUI
+
+Run `uiseal` in a terminal to open the interactive interface.
+
+**Home** — command menu. Navigate with ↑/↓ and Enter.
+
+**Scanning** — live spinner, progress bar, and streaming violation log.
+
+**Results** — violations grouped by file, filterable by category and rule.
+
+### Key bindings
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate violations |
+| `←` / `→` | Switch category tab (All / Design / A11y / Security / Quality / variant-sprawl) |
+| `Tab` | Toggle rule drill-down — filter the current category by a single rule |
+| `n` | Toggle New / All (show only violations introduced after the baseline snapshot) |
+| `Enter` | Open selected violation in `$EDITOR` at the exact line |
+| `b` / `h` | Back to previous screen |
+| `q` | Quit |
+
+## CLI commands
+
+### `uiseal check [path]`
+
+Scan files and report violations. Exits with code 1 on errors, 0 on clean or warnings-only.
+
+```sh
+uiseal check
+uiseal check src/components
+uiseal check --staged                  # only staged files (pre-commit use)
+uiseal check --config path/to/dir     # config in a specific directory
+uiseal check --update-baseline        # rescan and rewrite baseline, exit 0
+uiseal check --no-baseline            # ignore baseline, report all violations
+uiseal check --verbose                # full output even for large result sets
+```
 
 ### `uiseal init`
 
-Scans `src/**/*.{tsx,jsx,css}`, extracts design tokens, and writes a `uiseal.config.ts` draft.
+Scans source files, extracts design tokens, and writes `uiseal.config.json`.
 
-```
+```sh
 uiseal init
-uiseal init --force   # overwrite an existing config
+uiseal init --force    # overwrite existing config
 ```
 
-### `uiseal check`
+### `uiseal baseline <subcommand>`
 
-Checks source files against the rules in `uiseal.config.ts`. Exits with code 1 if any errors are found.
+Manage the design-debt baseline to freeze existing violations.
 
+```sh
+uiseal baseline update    # rescan and rewrite the baseline file
+uiseal baseline prune     # remove fingerprints for violations that are now fixed
+uiseal baseline status    # show baseline path, enabled state, and debt counts
+uiseal baseline disable   # set baseline.enabled = false in config
 ```
-uiseal check
-uiseal check --config path/to/dir   # use a config in a specific directory
-uiseal check --staged               # only check files staged in git (pre-commit use)
-uiseal check --report               # POST aggregated metrics to uiseal_API_URL
+
+### `uiseal diff [base]`
+
+Compare HEAD against a base branch and print a PR review summary.
+
+```sh
+uiseal diff
+uiseal diff main
+uiseal diff --markdown    # output markdown (for PR comments / CI artifacts)
 ```
 
 ### `uiseal install-hooks`
 
-Wires up husky + lint-staged so `uiseal check --staged` runs automatically before every commit.
+Wires up husky + lint-staged so `uiseal check --staged` runs before every commit. All steps are idempotent.
 
-```
+```sh
 uiseal install-hooks
+npm install    # install the added devDependencies
 ```
-
-The command:
-
-1. Adds `husky` and `lint-staged` to `devDependencies` in `package.json` if they are not already present.
-2. Adds a `prepare: "husky"` script so husky installs itself after `npm install`.
-3. Adds a `lint-staged` entry mapping `*.{tsx,jsx,css}` to `uiseal check --staged`.
-4. Creates `.husky/pre-commit` containing `npx lint-staged`.
-
-All steps are idempotent — running the command twice changes nothing and reports what already exists.
-
-After running `install-hooks`, install the new dependencies:
-
-```
-npm install     # or pnpm install / yarn
-```
-
-**Note:** hooks can be bypassed with `--no-verify`. CI checking remains the guarantee — add
-`uiseal check` to your CI pipeline to catch anything that slips through.
-
-## Hook setup example
-
-See [`examples/with-hooks/`](../../examples/with-hooks/) for a minimal project with the hook
-wired up and a README that walks through the blocked-commit experience.
 
 ## Configuration
 
-Create `uiseal.config.ts` at the project root (or run `uiseal init` to generate one):
+`uiseal init` generates `uiseal.config.json` at the project root. The loader also accepts `.ts` and `.js`.
 
-```ts
-import { defineConfig } from '@uiseal/core';
-
-export default defineConfig({
-  tokens: {
-    colors: {
-      '--color-primary': '#0055ff',
-      '--color-text': '#1a1a1a',
+```json
+{
+  "tokens": {
+    "colors": {
+      "--color-primary": "#0055ff",
+      "--color-text": "#1a1a1a"
     },
-    spacing: [4, 8, 16, 24, 32],
-    fontSizes: [12, 14, 16, 18, 24],
-    fontFamilies: ['Inter', 'system-ui'],
-    radii: [4, 8, 12],
+    "spacing": [4, 8, 16, 24, 32],
+    "fontSizes": [12, 14, 16, 18, 24],
+    "fontFamilies": ["Inter", "system-ui"],
+    "radii": [4, 8, 12]
   },
-  rules: {
-    'no-hardcoded-color': 'error',
-    'no-arbitrary-spacing': 'warn',
-    'no-arbitrary-font-size': 'warn',
-    'no-unauthorized-font-family': 'error',
-    'no-arbitrary-radius': 'warn',
-    'enforce-contrast': 'error',
+  "rules": {
+    "no-hardcoded-color": "error",
+    "no-arbitrary-spacing": "warn",
+    "no-arbitrary-font-size": "warn",
+    "no-unauthorized-font-family": "error",
+    "no-arbitrary-radius": "warn",
+    "enforce-contrast": "error",
+    "no-img-without-alt": "error",
+    "no-missing-form-label": "error"
   },
-});
+  "wcag": { "level": "AA" },
+  "ignore": [],
+  "baseline": {
+    "enabled": false,
+    "path": ".uiseal-baseline.json"
+  }
+}
 ```
 
-Rules accept `'error'`, `'warn'`, or `'off'`.
+Rule severity: `"error"` | `"warn"` | `"off"`.
 
-## Network behaviour
+## Baseline workflow
 
-uiseal makes **zero network requests by default**. Setting `UISEAL_TOKEN` enables license validation (result cached for 24 hours). Network requests are never made for design-rule checking on the free tier. If you hold a paid license and want to see in-terminal announcements, set `UISEAL_SHOW_BANNER=1`.
+Use the baseline to freeze existing debt while blocking new violations from being introduced:
+
+1. Run `uiseal baseline update` to snapshot the current state.
+2. Commit `.uiseal-baseline.json` to the repository.
+3. `uiseal check` now reports only violations added **after** the snapshot.
+4. As violations are fixed, run `uiseal baseline prune` to bank the progress.
+
+The TUI results screen has a **New / All** toggle (`n` key) to switch between baseline-filtered and full views.
 
 ## CI integration
 
@@ -104,3 +148,11 @@ uiseal makes **zero network requests by default**. Setting `UISEAL_TOKEN` enable
 ```
 
 Exits with code 1 on errors, 0 on clean or warnings-only.
+
+## Network behaviour
+
+uiseal makes **zero network requests** for design-rule checking. Setting `UISEAL_TOKEN` enables license validation (result cached for 24 hours).
+
+## License
+
+[Elastic License 2.0](./LICENSE) — free to use, modify, and self-host; SaaS re-hosting requires a commercial license.
