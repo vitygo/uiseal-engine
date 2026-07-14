@@ -43,5 +43,8 @@
   "wcag": {
     "level": "AA"
   },
-  "ignore": []
+  "ignore": ["**/__fixtures__/**"],
+  "baseline": {
+    "enabled": true
+  }
 }
