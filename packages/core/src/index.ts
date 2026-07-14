@@ -51,3 +51,6 @@ export { diffScans, formatDiffAsMarkdown } from './diff/index.js';
 export type { ViolationSnapshot, DiffResult } from './diff/index.js';
 export { applyFixes } from './fixer/apply-fixes.js';
 export type { FixResult, FixApplied, FixSkipped, ApplyFixesOptions } from './fixer/apply-fixes.js';
+export { getAllSources, getSourceById, detectSources } from './sources/registry.js';
+export type { DetectedSource } from './sources/registry.js';
+export type { TokenSource, SourceTokens, DetectResult } from './sources/types.js';

@@ -72,6 +72,9 @@ importers:
       culori:
         specifier: ^3.3.0
         version: 3.3.0
+      glob:
+        specifier: ^11.0.0
+        version: 11.1.0
       micromatch:
         specifier: ^4.0.8
         version: 4.0.8
