@@ -1,0 +1,13 @@
+{
+  "tokens": {
+    "colors": { "--color-primary": "#0055ff" },
+    "spacing": [8, 16],
+    "fontSizes": [14, 16],
+    "fontFamilies": ["Inter"],
+    "radii": [4]
+  },
+  "rules": {
+    "no-hardcoded-color": "error"
+  },
+  "ignore": []
+}

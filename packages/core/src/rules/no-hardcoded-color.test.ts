@@ -15,7 +15,7 @@ const baseConfig: uisealConfig = {
   ignore: [],
 };
 
-async function run(code: string, ext: 'css' | 'tsx' = 'css') {
+async function run(code: string, ext: 'css' | 'tsx' | 'scss' | 'less' = 'css') {
   const { violations } = await analyze({
     files: new Map([[`test.${ext}`, code]]),
     config: baseConfig,
@@ -132,6 +132,51 @@ describe('no-hardcoded-color — JSX color-ish prop', () => {
   return <div id="#section" />;
 }`;
     const vs = await run(code, 'tsx');
+    expect(vs).toHaveLength(0);
+  });
+});
+
+describe('no-hardcoded-color — SCSS', () => {
+  it('flags the literal hex in a $variable definition', async () => {
+    const vs = await run('$primary: #ff0000;\n.a { color: $primary; }', 'scss');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.message).toContain('#ff0000');
+    expect(vs[0]!.message).toContain('$primary');
+  });
+
+  it('does not flag a usage of a $variable (only the definition line is reported)', async () => {
+    const vs = await run('$primary: #ff0000;\n.a { color: $primary; }', 'scss');
+    expect(vs.map((v) => v.line)).toEqual([1]);
+  });
+
+  it('reaches declarations inside nested rules', async () => {
+    const vs = await run('.a { &:hover { color: #00ff00; } }', 'scss');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.message).toContain('#00ff00');
+  });
+});
+
+describe('no-hardcoded-color — LESS', () => {
+  it('flags the literal hex in an @variable definition', async () => {
+    const vs = await run('@primary: #ff0000;\n.a { color: @primary; }', 'less');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.message).toContain('#ff0000');
+    expect(vs[0]!.message).toContain('@primary');
+  });
+
+  it('does not flag a usage of an @variable (only the definition line is reported)', async () => {
+    const vs = await run('@primary: #ff0000;\n.a { color: @primary; }', 'less');
+    expect(vs.map((v) => v.line)).toEqual([1]);
+  });
+
+  it('reaches declarations inside nested rules', async () => {
+    const vs = await run('.a { &:hover { color: #00ff00; } }', 'less');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.message).toContain('#00ff00');
+  });
+
+  it('does not flag real at-rules like @media', async () => {
+    const vs = await run('@media screen { .a { color: var(--primary); } }', 'less');
     expect(vs).toHaveLength(0);
   });
 });

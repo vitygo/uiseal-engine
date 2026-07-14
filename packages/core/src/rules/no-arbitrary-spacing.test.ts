@@ -15,7 +15,7 @@ const baseConfig: uisealConfig = {
   ignore: [],
 };
 
-async function run(code: string, ext: 'css' | 'tsx' = 'css') {
+async function run(code: string, ext: 'css' | 'tsx' | 'scss' | 'less' = 'css') {
   const { violations } = await analyze({
     files: new Map([[`test.${ext}`, code]]),
     config: baseConfig,
@@ -122,6 +122,32 @@ describe('no-arbitrary-spacing', () => {
   return <div style={{ padding: '8px' }} />;
 }`;
     const vs = await run(code, 'tsx');
+    expect(vs).toHaveLength(0);
+  });
+});
+
+describe('no-arbitrary-spacing — SCSS', () => {
+  it('flags an arbitrary px value nested inside a rule', async () => {
+    const vs = await run('.a { &:hover { padding: 13px; } }', 'scss');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.message).toContain('13px');
+  });
+
+  it('passes when the value is a $variable reference', async () => {
+    const vs = await run('$spacing-lg: 24px;\n.a { padding: $spacing-lg; }', 'scss');
+    expect(vs).toHaveLength(0);
+  });
+});
+
+describe('no-arbitrary-spacing — LESS', () => {
+  it('flags an arbitrary px value nested inside a rule', async () => {
+    const vs = await run('.a { &:hover { padding: 13px; } }', 'less');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.message).toContain('13px');
+  });
+
+  it('passes when the value is an @variable reference', async () => {
+    const vs = await run('@spacing-lg: 24px;\n.a { padding: @spacing-lg; }', 'less');
     expect(vs).toHaveLength(0);
   });
 });

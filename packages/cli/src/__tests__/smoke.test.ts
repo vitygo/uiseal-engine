@@ -9,6 +9,7 @@ const CLI_BIN = resolve(__dirname, '../../dist/index.js');
 const PKG_VERSION = (JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf8')) as { version: string }).version;
 const CLEAN_FIXTURE = resolve(__dirname, '../__fixtures__/clean-fixture');
 const VIOLATING_FIXTURE = resolve(__dirname, '../__fixtures__/violating-fixture');
+const SCSS_FIXTURE = resolve(__dirname, '../__fixtures__/scss-fixture');
 
 function runCli(args: string[], cwd: string) {
   return spawnSync('node', [CLI_BIN, ...args], { cwd, encoding: 'utf8' });
@@ -33,5 +34,12 @@ describe('smoke tests', () => {
   it('--version output matches package.json version', () => {
     const result = runCli(['--version'], process.cwd());
     expect(result.stdout.trim()).toBe(PKG_VERSION);
+  });
+
+  it('discovers and analyzes a .scss file end-to-end (glob -> parse -> analyze -> report)', () => {
+    const result = runCli(['check'], SCSS_FIXTURE);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('no-hardcoded-color');
+    expect(result.stdout).toContain('styles.scss');
   });
 });

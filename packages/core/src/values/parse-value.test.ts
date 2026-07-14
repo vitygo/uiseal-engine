@@ -93,6 +93,27 @@ describe('parseValue — tokens', () => {
     const v = parseValue('16px', 'margin');
     expect(v.isToken).toBe(false);
   });
+
+  it('detects a SCSS $variable as a token', () => {
+    const v = parseValue('$primary', 'color');
+    expect(v.isToken).toBe(true);
+  });
+
+  it('detects a LESS @variable as a token', () => {
+    const v = parseValue('@primary', 'color');
+    expect(v.isToken).toBe(true);
+  });
+
+  it('does not treat a hardcoded hex as a token, even in a $var definition', () => {
+    // The definition itself ($primary: #ff0000) is a literal, not a reference.
+    const v = parseValue('#ff0000', '$primary');
+    expect(v.isToken).toBe(false);
+    expect(v.kind).toBe('color');
+  });
+
+  it('does not false-positive on an "@" mid-identifier (e.g. a url with @2x)', () => {
+    expect(isVarToken('url(foo@2x.png)')).toBe(false);
+  });
 });
 
 describe('containsColorValue / matchColorValues', () => {
