@@ -1,6 +1,6 @@
 import type { Declaration } from 'postcss';
 import type { Rule, RuleContext } from './types.js';
-import { parseValue } from '../values/parse-value.js';
+import { parseValue, isVarToken } from '../values/parse-value.js';
 
 export const noArbitraryRadius: Rule = {
   id: 'no-arbitrary-radius',
@@ -36,7 +36,7 @@ export const noArbitraryRadius: Rule = {
 function isAllowedPart(part: string, ctx: RuleContext): boolean {
   if (part === '0' || part === 'auto') return true;
   if (part.endsWith('%')) return true;
-  if (/^var\s*\(--/.test(part)) return true;
+  if (isVarToken(part)) return true;
   if (/^calc\s*\(/.test(part)) return true;
 
   if (part.endsWith('px')) {

@@ -66,7 +66,7 @@ function processDecl(prop: string, value: string, tokens: ExtractedTokens): void
     const first = value.split(',')[0]?.trim().replace(/^['"]|['"]$/g, '');
     if (
       first &&
-      !first.startsWith('var(--') &&
+      !isVarToken(first) &&
       !FONT_FAMILY_KEYWORDS.has(first.toLowerCase())
     ) {
       inc(tokens.fontFamilies, first);

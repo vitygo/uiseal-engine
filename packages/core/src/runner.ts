@@ -1,12 +1,10 @@
 import micromatch from 'micromatch';
-import type { Declaration, Comment } from 'postcss';
+import type { Declaration, Comment, Root, AtRule } from 'postcss';
 import type { TSESTree } from '@typescript-eslint/types';
 import type { uisealConfig } from './config/schema.js';
 import type { Violation } from './types.js';
 import type { Rule, RuleContext, Severity } from './rules/types.js';
-import { parseCss } from './parsers/css.js';
-import { parseJsx } from './parsers/jsx.js';
-import { getParserForFile } from './parsers/registry.js';
+import { getParserForFile, type ParsedFile } from './parsers/registry.js';
 import { buildCssIgnoreMap, buildJsxIgnoreMap, applyIgnoreMap } from './ignore.js';
 import { clearEnvInClientCache } from './rules/no-env-in-client.js';
 import {
@@ -79,11 +77,27 @@ export async function analyze({ files, config, rules, projectRoot, licenseState:
     }
 
     const parser = getParserForFile(filePath);
+    if (!parser) continue;
 
-    if (parser?.id === 'css') {
-      violations.push(...analyzeCss(filePath, code, config, rules, definedTokens, usedVarRefs, spacingUsages));
-    } else if (parser?.id === 'jsx') {
-      violations.push(...analyzeJsx(filePath, code, config, rules, usedVarRefs));
+    let parsed: ParsedFile;
+    try {
+      parsed = parser.parse(code, filePath);
+    } catch (err) {
+      violations.push({
+        ruleId: 'parse-error',
+        severity: 'warning',
+        message: `Failed to parse file: ${err instanceof Error ? err.message : String(err)}`,
+        file: filePath,
+        line: 1,
+        column: 1,
+      });
+      continue;
+    }
+
+    if (parsed.kind === 'css') {
+      violations.push(...analyzeCss(filePath, code, parsed.root, config, rules, definedTokens, usedVarRefs, spacingUsages));
+    } else if (parsed.kind === 'jsx') {
+      violations.push(...analyzeJsx(filePath, code, parsed.ast, config, rules, usedVarRefs));
     }
   }
 
@@ -150,6 +164,7 @@ function makeContext(
 function analyzeCss(
   filePath: string,
   code: string,
+  root: Root,
   config: uisealConfig,
   rules: Rule[],
   definedTokens: TokenDef[],
@@ -157,23 +172,10 @@ function analyzeCss(
   spacingUsages: SpacingUsage[],
 ): Violation[] {
   const violations: Violation[] = [];
-  let root;
-  try {
-    root = parseCss(code);
-  } catch (err) {
-    violations.push({
-      ruleId: 'parse-error',
-      severity: 'warning',
-      message: `Failed to parse file: ${err instanceof Error ? err.message : String(err)}`,
-      file: filePath,
-      line: 1,
-      column: 1,
-    });
-    return violations;
-  }
 
   const cssRules = rules.filter((r) => r.checkCssDeclaration !== undefined);
   const cssCommentRules = rules.filter((r) => r.checkCssComment !== undefined);
+  const cssAtRuleRules = rules.filter((r) => r.checkCssAtRule !== undefined);
 
   root.walkDecls((decl) => {
     for (const rule of cssRules) {
@@ -195,6 +197,19 @@ function analyzeCss(
     });
   }
 
+  // LESS `@name: value;` variable definitions parse as AtRule nodes (not
+  // Declarations) — this hook lets rules like no-hardcoded-color inspect them.
+  if (cssAtRuleRules.length > 0) {
+    root.walkAtRules((atRule: AtRule) => {
+      for (const rule of cssAtRuleRules) {
+        const sev = effectiveSeverity(rule, config);
+        if (sev === 'off') continue;
+        const ctx = makeContext(filePath, config, violations, sev);
+        rule.checkCssAtRule!(atRule, ctx);
+      }
+    });
+  }
+
   const ignoreMap = buildCssIgnoreMap(code, root);
 
   // Collect for post-analysis
@@ -210,25 +225,12 @@ function analyzeCss(
 function analyzeJsx(
   filePath: string,
   code: string,
+  ast: TSESTree.Program,
   config: uisealConfig,
   rules: Rule[],
   usedVarRefs: Set<string>,
 ): Violation[] {
   const violations: Violation[] = [];
-  let ast;
-  try {
-    ast = parseJsx(code);
-  } catch (err) {
-    violations.push({
-      ruleId: 'parse-error',
-      severity: 'warning',
-      message: `Failed to parse file: ${err instanceof Error ? err.message : String(err)}`,
-      file: filePath,
-      line: 1,
-      column: 1,
-    });
-    return violations;
-  }
   const jsxRules = rules.filter((r) => r.checkJsxNode !== undefined);
   const cssRules = rules.filter((r) => r.checkCssDeclaration !== undefined);
 

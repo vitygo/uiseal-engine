@@ -1,4 +1,4 @@
-import type { Declaration, Comment } from 'postcss';
+import type { Declaration, Comment, AtRule } from 'postcss';
 import type { TSESTree } from '@typescript-eslint/types';
 import type { uisealConfig } from '../config/schema.js';
 import type { Violation } from '../types.js';
@@ -31,5 +31,7 @@ export interface Rule {
   defaultSeverity: Severity;
   checkCssDeclaration?(decl: Declaration, ctx: RuleContext): void;
   checkCssComment?(comment: Comment, ctx: RuleContext): void;
+  /** LESS `@name: value;` variable definitions parse as AtRule nodes, not Declarations. */
+  checkCssAtRule?(atRule: AtRule, ctx: RuleContext): void;
   checkJsxNode?(node: TSESTree.Node, ctx: RuleContext): void;
 }

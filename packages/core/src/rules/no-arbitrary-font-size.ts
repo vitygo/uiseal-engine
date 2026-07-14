@@ -1,6 +1,6 @@
 import type { Declaration } from 'postcss';
 import type { Rule, RuleContext } from './types.js';
-import { parseValue } from '../values/parse-value.js';
+import { parseValue, isVarToken } from '../values/parse-value.js';
 
 export const noArbitraryFontSize: Rule = {
   id: 'no-arbitrary-font-size',
@@ -11,7 +11,7 @@ export const noArbitraryFontSize: Rule = {
     if (decl.prop !== 'font-size') return;
 
     const value = decl.value.trim();
-    if (/^var\s*\(--/.test(value)) return;
+    if (isVarToken(value)) return;
 
     if (value.endsWith('px') || value.endsWith('rem')) {
       const parsed = parseValue(value);

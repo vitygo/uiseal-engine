@@ -7,6 +7,8 @@ import type { Root } from 'postcss';
 import type { TSESTree } from '@typescript-eslint/types';
 import { parseCss } from './css.js';
 import { parseJsx } from './jsx.js';
+import { parseScss } from './scss.js';
+import { parseLess } from './less.js';
 
 export type ParsedFile =
   | { kind: 'css'; root: Root }
@@ -34,6 +36,22 @@ const registry: ParserEntry[] = [
       return { kind: 'css', root: parseCss(source) };
     },
   },
+  {
+    id: 'scss',
+    extensions: ['scss'],
+    parse(source: string, filePath: string): ParsedFile {
+      return { kind: 'css', root: parseScss(source, filePath) };
+    },
+  },
+  {
+    id: 'less',
+    extensions: ['less'],
+    parse(source: string, filePath: string): ParsedFile {
+      return { kind: 'css', root: parseLess(source, filePath) };
+    },
+  },
+  // Indented Sass (.sass) is a different syntax (no braces/semicolons) that
+  // postcss-scss does not parse — it is intentionally NOT registered here.
 ];
 
 function extOf(filePath: string): string {
@@ -49,9 +67,10 @@ export function supportedExtensions(): string[] {
   return registry.flatMap((entry) => entry.extensions);
 }
 
-// CSS Modules (*.module.css) already match the "css" extension above; the
-// explicit module.css clause is kept for readability/discoverability of the
-// glob pattern and is a no-op for the matched file set.
+// CSS Modules (*.module.css, *.module.scss, *.module.less) already match
+// their base extension above; the explicit module.* clauses are kept for
+// readability/discoverability of the glob pattern and are a no-op for the
+// matched file set.
 export function buildGlob(): string {
-  return `**/*.{${supportedExtensions().join(',')},module.css}`;
+  return `**/*.{${supportedExtensions().join(',')},module.css,module.scss,module.less}`;
 }

@@ -1,5 +1,6 @@
 import type { Declaration } from 'postcss';
 import type { Rule, RuleContext } from './types.js';
+import { isVarToken } from '../values/parse-value.js';
 
 export const noUnauthorizedFontFamily: Rule = {
   id: 'no-unauthorized-font-family',
@@ -10,7 +11,7 @@ export const noUnauthorizedFontFamily: Rule = {
     if (decl.prop !== 'font-family') return;
 
     const value = decl.value.trim();
-    if (/^var\s*\(--/.test(value)) return;
+    if (isVarToken(value)) return;
 
     const firstFamily = extractFirstFamily(value);
     if (firstFamily === null) return;

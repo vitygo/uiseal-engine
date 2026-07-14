@@ -1,4 +1,4 @@
-import type { Declaration } from 'postcss';
+import type { Declaration, AtRule } from 'postcss';
 import type { TSESTree } from '@typescript-eslint/types';
 import type { Rule, RuleContext } from './types.js';
 import { parseValue } from '../values/parse-value.js';
@@ -11,6 +11,13 @@ function isColorProp(prop: string): boolean {
   return COLOR_PROP_RE.test(prop);
 }
 
+// SCSS ($x) / LESS (@x) variable definitions aren't real CSS properties, so
+// their name never matches COLOR_PROP_RE. We still want to catch a hardcoded
+// hex in the definition itself (usages are skipped via parseValue's isToken).
+function isVariableDefinitionProp(prop: string): boolean {
+  return /^[$@]/.test(prop);
+}
+
 function checkAndReport(
   prop: string,
   value: string,
@@ -18,7 +25,7 @@ function checkAndReport(
   column: number,
   ctx: RuleContext,
 ): void {
-  if (!isColorProp(prop)) return;
+  if (!isColorProp(prop) && !isVariableDefinitionProp(prop)) return;
   const parsed = parseValue(value, prop);
   if (parsed.kind !== 'color') return;
   if (parsed.isToken) return;
@@ -53,6 +60,20 @@ export const noHardcodedColor: Rule = {
       decl.value,
       decl.source?.start?.line ?? 1,
       decl.source?.start?.column ?? 0,
+      ctx,
+    );
+  },
+
+  // LESS parses top-level `@name: value;` variable definitions as AtRule
+  // nodes, not Declarations — postcss-less preserves the literal ':' in
+  // raws.afterName, which real at-rules (@media, @import, …) never have.
+  checkCssAtRule(atRule: AtRule, ctx: RuleContext): void {
+    if (!atRule.raws.afterName?.includes(':')) return;
+    checkAndReport(
+      `@${atRule.name}`,
+      atRule.params,
+      atRule.source?.start?.line ?? 1,
+      atRule.source?.start?.column ?? 0,
       ctx,
     );
   },

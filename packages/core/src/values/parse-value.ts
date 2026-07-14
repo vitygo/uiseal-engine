@@ -31,9 +31,13 @@ const COLOR_PATTERN = '#[0-9a-fA-F]{3,8}\\b|rgba?\\s*\\([^)]+\\)|hsla?\\s*\\([^)
 const COLOR_RE_TEST = new RegExp(COLOR_PATTERN, 'i');
 const COLOR_RE_GLOBAL = new RegExp(COLOR_PATTERN, 'gi');
 
-// Unanchored — matches a var(--…) reference anywhere in the string (e.g.
-// inside linear-gradient(var(--x), #fff)).
-const VAR_TOKEN_RE = /var\s*\(--/;
+// Unanchored — matches a var(--…) reference, a SCSS $variable, or a LESS
+// @variable anywhere in the string (e.g. inside linear-gradient(var(--x), #fff)
+// or "$spacing-1 $spacing-2"). The negative lookbehind keeps this from
+// matching mid-identifier (foo@2x.png, user@example.com) or a leading
+// digit (SCSS/LESS identifiers can't start with one, so "@2x" is never a
+// variable reference).
+const VAR_TOKEN_RE = /var\s*\(--|(?<![\w$@-])[$@][A-Za-z_][\w-]*/;
 
 const SPACING_PROP_RE =
   /^(margin(-top|-right|-bottom|-left)?|padding(-top|-right|-bottom|-left)?|gap|row-gap|column-gap|top|left|right|bottom)$/;
