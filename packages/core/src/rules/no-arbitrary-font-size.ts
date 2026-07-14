@@ -1,5 +1,6 @@
 import type { Declaration } from 'postcss';
 import type { Rule, RuleContext } from './types.js';
+import { parseValue } from '../values/parse-value.js';
 
 export const noArbitraryFontSize: Rule = {
   id: 'no-arbitrary-font-size',
@@ -12,14 +13,9 @@ export const noArbitraryFontSize: Rule = {
     const value = decl.value.trim();
     if (/^var\s*\(--/.test(value)) return;
 
-    if (value.endsWith('px')) {
-      const num = parseFloat(value);
-      if (!isNaN(num) && ctx.helpers.isAllowedFontSize(num, ctx.config)) return;
-    }
-
-    if (value.endsWith('rem')) {
-      const num = parseFloat(value);
-      if (!isNaN(num) && ctx.helpers.isAllowedFontSize(num * 16, ctx.config)) return;
+    if (value.endsWith('px') || value.endsWith('rem')) {
+      const parsed = parseValue(value);
+      if (parsed.value !== null && ctx.helpers.isAllowedFontSize(parsed.value, ctx.config)) return;
     }
 
     ctx.report({

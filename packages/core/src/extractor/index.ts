@@ -2,6 +2,7 @@ import { parse as parseColor, formatHex } from 'culori';
 import type { TSESTree } from '@typescript-eslint/types';
 import { parseCss } from '../parsers/css.js';
 import { parseJsx } from '../parsers/jsx.js';
+import { isVarToken, matchColorValues, parseValue } from '../values/parse-value.js';
 
 export interface ExtractedTokens {
   colors: Map<string, number>;
@@ -25,9 +26,6 @@ const COLOR_PROP_RE =
 const SPACING_PROP_RE =
   /^(margin(-top|-right|-bottom|-left)?|padding(-top|-right|-bottom|-left)?|gap|row-gap|column-gap|top|left|right|bottom)$/;
 
-const COLOR_VALUE_RE =
-  /#[0-9a-fA-F]{3,8}\b|rgb\s*\([^)]+\)|rgba\s*\([^)]+\)|hsl\s*\([^)]+\)|hsla\s*\([^)]+\)/gi;
-
 function inc<K>(map: Map<K, number>, key: K): void {
   map.set(key, (map.get(key) ?? 0) + 1);
 }
@@ -39,23 +37,19 @@ function normalizeHex(raw: string): string | null {
 }
 
 function collectColors(value: string, map: Map<string, number>): void {
-  if (/var\s*\(--/.test(value)) return;
-  const matches = value.match(COLOR_VALUE_RE);
-  if (!matches) return;
-  for (const m of matches) {
+  if (isVarToken(value)) return;
+  for (const m of matchColorValues(value)) {
     const hex = normalizeHex(m);
     if (hex) inc(map, hex);
   }
 }
 
 function collectPxValues(value: string, map: Map<number, number>): void {
-  if (/var\s*\(--/.test(value)) return;
+  if (isVarToken(value)) return;
   const parts = value.trim().replace(/\//g, ' ').split(/\s+/);
   for (const part of parts) {
-    if (part.endsWith('px')) {
-      const num = parseFloat(part);
-      if (!isNaN(num)) inc(map, num);
-    }
+    const parsed = parseValue(part);
+    if (parsed.unit === 'px' && parsed.value !== null) inc(map, parsed.value);
   }
 }
 

@@ -1,6 +1,7 @@
 import type { Root } from 'postcss';
 import type { uisealConfig } from '../config/schema.js';
 import type { Violation } from '../types.js';
+import { parseValue } from '../values/parse-value.js';
 
 const SPACING_PROP_RE =
   /^(margin(-top|-right|-bottom|-left)?|padding(-top|-right|-bottom|-left)?|gap|row-gap|column-gap|top|left|right|bottom)$/;
@@ -45,20 +46,8 @@ export function collectNonAllowedSpacingUsages(
 }
 
 function toPixels(part: string): number | null {
-  if (part === '0' || part === 'auto') return null;
-  if (part.endsWith('%')) return null;
-  if (/^var\s*\(/.test(part)) return null;
-  if (/^calc\s*\(|^env\s*\(/.test(part)) return null;
-
-  if (part.endsWith('px')) {
-    const num = parseFloat(part);
-    return isNaN(num) ? null : num;
-  }
-  if (part.endsWith('rem')) {
-    const num = parseFloat(part);
-    return isNaN(num) ? null : num * 16;
-  }
-  return null;
+  const parsed = parseValue(part);
+  return parsed.unit === 'px' || parsed.unit === 'rem' ? parsed.value : null;
 }
 
 export interface SpacingNearTokenResult {

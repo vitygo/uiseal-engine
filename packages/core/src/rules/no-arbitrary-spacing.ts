@@ -1,5 +1,6 @@
 import type { Declaration } from 'postcss';
 import type { Rule, RuleContext } from './types.js';
+import { parseValue } from '../values/parse-value.js';
 
 const SPACING_PROP_RE =
   /^(margin(-top|-right|-bottom|-left)?|padding(-top|-right|-bottom|-left)?|gap|row-gap|column-gap|top|left|right|bottom)$/;
@@ -33,14 +34,9 @@ function isAllowedPart(part: string, ctx: RuleContext): boolean {
   // calc() and env() are dynamic — leave them alone.
   if (/^calc\s*\(|^env\s*\(/.test(part)) return true;
 
-  if (part.endsWith('px')) {
-    const num = parseFloat(part);
-    return !isNaN(num) && ctx.helpers.isAllowedSpacing(num, ctx.config);
-  }
-
-  if (part.endsWith('rem')) {
-    const num = parseFloat(part);
-    if (!isNaN(num)) return ctx.helpers.isAllowedSpacing(num * 16, ctx.config);
+  if (part.endsWith('px') || part.endsWith('rem')) {
+    const parsed = parseValue(part);
+    return parsed.value !== null && ctx.helpers.isAllowedSpacing(parsed.value, ctx.config);
   }
 
   // Any other unit-bearing value (em, vh, …) is not a spacing token.

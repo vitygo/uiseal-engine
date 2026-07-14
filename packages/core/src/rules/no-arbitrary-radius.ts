@@ -1,5 +1,6 @@
 import type { Declaration } from 'postcss';
 import type { Rule, RuleContext } from './types.js';
+import { parseValue } from '../values/parse-value.js';
 
 export const noArbitraryRadius: Rule = {
   id: 'no-arbitrary-radius',
@@ -39,8 +40,8 @@ function isAllowedPart(part: string, ctx: RuleContext): boolean {
   if (/^calc\s*\(/.test(part)) return true;
 
   if (part.endsWith('px')) {
-    const num = parseFloat(part);
-    return !isNaN(num) && ctx.helpers.isAllowedRadius(num, ctx.config);
+    const parsed = parseValue(part);
+    return parsed.value !== null && ctx.helpers.isAllowedRadius(parsed.value, ctx.config);
   }
 
   // Any other unit-bearing value is not a radius token.

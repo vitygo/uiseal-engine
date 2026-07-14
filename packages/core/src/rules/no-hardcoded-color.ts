@@ -1,20 +1,14 @@
 import type { Declaration } from 'postcss';
 import type { TSESTree } from '@typescript-eslint/types';
 import type { Rule, RuleContext } from './types.js';
+import { parseValue } from '../values/parse-value.js';
 
 // CSS properties that carry color values.
 const COLOR_PROP_RE =
   /^(color|background(-color|-image|-gradient|-attachment|-clip|-origin|-position|-repeat|-size)?|border(-top|-right|-bottom|-left)?(-color)?|fill|stroke|outline(-color|-style|-width|-offset)?)$/;
 
-// Matches hex, rgb/rgba, hsl/hsla anywhere in a value string.
-const HARDCODED_RE = /#[0-9a-fA-F]{3,8}\b|rgb\s*\(|rgba\s*\(|hsl\s*\(|hsla\s*\(/i;
-
 function isColorProp(prop: string): boolean {
   return COLOR_PROP_RE.test(prop);
-}
-
-function hasVarToken(value: string): boolean {
-  return /var\s*\(--/.test(value);
 }
 
 function checkAndReport(
@@ -25,8 +19,9 @@ function checkAndReport(
   ctx: RuleContext,
 ): void {
   if (!isColorProp(prop)) return;
-  if (!HARDCODED_RE.test(value)) return;
-  if (hasVarToken(value)) return;
+  const parsed = parseValue(value, prop);
+  if (parsed.kind !== 'color') return;
+  if (parsed.isToken) return;
 
   const closest = ctx.helpers.findClosestColorToken(value, ctx.config);
   if (closest !== null) {
