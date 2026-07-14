@@ -1,6 +1,6 @@
 # @uiseal/cli
 
-Design-system governance CLI for JSX/TSX and CSS codebases. Runs as an interactive TUI when invoked without arguments in a TTY; falls through to a standard CLI when arguments are provided or stdin is not a TTY.
+Design-system governance CLI for JSX/TSX and CSS/SCSS/LESS codebases. Runs as an interactive TUI when invoked without arguments in a TTY; falls through to a standard CLI when arguments are provided or stdin is not a TTY.
 
 ## Installation
 

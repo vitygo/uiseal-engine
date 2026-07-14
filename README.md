@@ -4,7 +4,7 @@ Deterministic design-system linter for human and AI-generated code.
 
 ## What it is
 
-uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, TSX, and JSX files and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
+uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, and JSX files and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
 
 ## Install
 
@@ -67,8 +67,8 @@ Run `uiseal` without arguments to open the interactive terminal UI:
 
 Two seams keep `@uiseal/core` from growing copy-pasted dispatch logic as it adds file types and value kinds:
 
-- **File-type dispatch** (`packages/core/src/parsers/registry.ts`): every parser (CSS, JSX, …) is a `ParserEntry` registered once, with its own extensions and a `parse()` function. `getParserForFile()`, `supportedExtensions()`, and `buildGlob()` all derive from this registry — nothing else in the codebase (runner, extractor, cli, github-action) hardcodes an extension list or a `**/*.{tsx,jsx,css}`-style glob. To support a new file type, add a `ParserEntry` and a `ParsedFile` variant here; don't add `ext === '...'` checks elsewhere.
-- **Canonical design values** (`packages/core/src/values/parse-value.ts`): `parseValue(raw, propertyHint?)` is the single place that knows how to read a hex/rgb/hsl color, a px/rem length, or a font-family literal, and whether a value is a `var(--…)` token reference. Rules, the extractor, and analyzers call `parseValue()` instead of keeping their own regexes. To support a new value kind, extend `parseValue()`; don't add a new regex to a rule.
+- **File-type dispatch** (`packages/core/src/parsers/registry.ts`): every parser (CSS, SCSS, LESS, JSX, …) is a `ParserEntry` registered once, with its own extensions and a `parse()` function. `getParserForFile()`, `supportedExtensions()`, and `buildGlob()` all derive from this registry — nothing else in the codebase (runner, extractor, cli, github-action) hardcodes an extension list or a `**/*.{tsx,jsx,css}`-style glob. SCSS and LESS reuse the CSS rule set entirely: `postcss-scss`/`postcss-less` produce the same `{ kind: 'css', root }` shape as plain CSS, so a CSS-dialect only needs a new `ParserEntry` here, not new rules. (Indented Sass — `.sass` — isn't registered; `postcss-scss` only parses the brace/semicolon SCSS syntax.) To support a new file type, add a `ParserEntry` and, if it's not CSS-shaped, a `ParsedFile` variant; don't add `ext === '...'` checks elsewhere.
+- **Canonical design values** (`packages/core/src/values/parse-value.ts`): `parseValue(raw, propertyHint?)` is the single place that knows how to read a hex/rgb/hsl color, a px/rem length, or a font-family literal, and whether a value is a token reference — `var(--…)`, a SCSS `$variable`, or a LESS `@variable`. Rules, the extractor, and analyzers call `parseValue()` instead of keeping their own regexes. To support a new value kind, extend `parseValue()`; don't add a new regex to a rule.
 
 ## Packages
 

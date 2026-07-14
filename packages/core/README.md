@@ -1,6 +1,6 @@
 # @uiseal/core
 
-AST-based design-system lint engine. Parses JSX/TSX and CSS/PostCSS files, applies configurable rules, and returns typed violations. Used by `@uiseal/cli`, the UISeal VS Code extension, and the GitHub Action.
+AST-based design-system lint engine. Parses JSX/TSX and CSS/PostCSS files (including SCSS and LESS via `postcss-scss`/`postcss-less`), applies configurable rules, and returns typed violations. Used by `@uiseal/cli`, the UISeal VS Code extension, and the GitHub Action.
 
 ## Installation
 
@@ -70,6 +70,10 @@ for (const v of violations) {
 | `no-todo-without-ticket` | TODO/FIXME comments must include a tracking ticket reference |
 
 > **Team tier:** `variant-sprawl` — detects components with excessive prop variants.
+
+## Supported file types
+
+`.css`, `.scss`, `.less` (including `.module.scss`/`.module.less`), and `.tsx`/`.jsx`. SCSS and LESS parse through `postcss-scss`/`postcss-less`, so nested rules, mixins, and `@use`/`@include` are handled like real CSS — the same rules that run on `.css` run unchanged on `.scss`/`.less`. A `$variable`/`@variable` *usage* (e.g. `color: $primary;`) is treated as a token reference, same as `var(--primary)`; the hardcoded literal in the variable's own *definition* (`$primary: #ff0000;`) is still flagged. Indented Sass (`.sass`) is not supported.
 
 ## Config schema
 

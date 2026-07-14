@@ -72,7 +72,7 @@ jobs:
           # uiseal_API_URL: ${{ secrets.uiseal_API_URL }}
 ```
 
-On `pull_request` events the action checks only the files changed in the PR (fetched via the GitHub API). On any other event it falls back to a full scan of all `*.tsx`, `*.jsx`, and `*.css` files.
+On `pull_request` events the action checks only the files changed in the PR (fetched via the GitHub API). On any other event it falls back to a full scan of all `*.tsx`, `*.jsx`, `*.css`, `*.scss`, and `*.less` files.
 
 ## Inputs
 
