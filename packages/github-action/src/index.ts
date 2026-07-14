@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { glob } from 'glob';
-import { loadConfig, analyze, allRules, diffScans, formatDiffAsMarkdown } from '@uiseal/core';
+import { loadConfig, analyze, allRules, diffScans, formatDiffAsMarkdown, getParserForFile, buildGlob } from '@uiseal/core';
 import type { Violation, ViolationSnapshot, uisealConfig } from '@uiseal/core';
 
 // Category lookup: Violation doesn't carry category but ViolationSnapshot requires it.
@@ -116,7 +116,7 @@ async function getChangedFiles(): Promise<string[] | null> {
 
   return (data.files ?? [])
     .map((f) => f.filename)
-    .filter((f) => /\.(tsx|jsx|css)$/.test(f));
+    .filter((f) => getParserForFile(f) !== undefined);
 }
 
 async function postMetrics(violations: Violation[]): Promise<void> {
@@ -159,7 +159,7 @@ async function runPrReview(configInput: string, reportEnabled: boolean): Promise
 
   // Scan HEAD — GitHub already checks out the merge commit on pull_request events.
   core.info('UISeal: scanning HEAD…');
-  const headFilePaths = await glob('**/*.{tsx,jsx,css}', { ignore: config.ignore });
+  const headFilePaths = await glob(buildGlob(), { ignore: config.ignore });
   const headSnapshots = await collectSnapshots(headFilePaths, config);
   core.info(`UISeal: HEAD — ${headFilePaths.length} file(s), ${headSnapshots.length} violation(s)`);
 
@@ -169,7 +169,7 @@ async function runPrReview(configInput: string, reportEnabled: boolean): Promise
     core.info(`UISeal: fetching base '${baseRef}'…`);
     execSync(`git fetch origin ${baseRef} --depth=1`, { stdio: 'pipe' });
     execSync('git checkout FETCH_HEAD -- .', { stdio: 'pipe' });
-    const baseFilePaths = await glob('**/*.{tsx,jsx,css}', { ignore: config.ignore });
+    const baseFilePaths = await glob(buildGlob(), { ignore: config.ignore });
     baseSnapshots = await collectSnapshots(baseFilePaths, config);
     core.info(`UISeal: BASE — ${baseFilePaths.length} file(s), ${baseSnapshots.length} violation(s)`);
   } finally {
@@ -242,7 +242,7 @@ export async function run(): Promise<void> {
     filePaths = changedFiles;
     core.info(`Checking ${filePaths.length} changed file(s) from PR`);
   } else {
-    filePaths = await glob('**/*.{tsx,jsx,css}', { ignore: config.ignore });
+    filePaths = await glob(buildGlob(), { ignore: config.ignore });
     core.info(`Full scan: ${filePaths.length} file(s)`);
   }
 

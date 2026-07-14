@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { glob } from 'glob';
-import { extract, clusterColors } from '@uiseal/core';
+import { extract, clusterColors, buildGlob } from '@uiseal/core';
 import type { ExtractedTokens } from '@uiseal/core';
 import type { ColorCluster } from '@uiseal/core';
 import { intro, outro, spinner, confirm, text, note, select, isCancel, cancel } from '@clack/prompts';
@@ -160,9 +160,9 @@ export const initCommand = new Command('init')
     let fileCount!: number;
 
     const s = spinner();
-    s.start('Scanning **/*.{tsx,jsx,css,module.css}…');
+    s.start(`Scanning ${buildGlob()}…`);
     try {
-      const filePaths = await glob('**/*.{tsx,jsx,css,module.css}', {
+      const filePaths = await glob(buildGlob(), {
         cwd: process.cwd(),
         ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.next/**'],
       });

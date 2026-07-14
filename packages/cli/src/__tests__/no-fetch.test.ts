@@ -32,6 +32,8 @@ vi.mock('@uiseal/core', async () => {
       cachedAt: new Date(),
       source: 'offline',
     }),
+    getParserForFile: vi.fn().mockReturnValue(undefined),
+    buildGlob: vi.fn().mockReturnValue('**/*.{tsx,jsx,css,module.css}'),
   };
 });
 

@@ -6,6 +6,7 @@ import type { Violation } from './types.js';
 import type { Rule, RuleContext, Severity } from './rules/types.js';
 import { parseCss } from './parsers/css.js';
 import { parseJsx } from './parsers/jsx.js';
+import { getParserForFile } from './parsers/registry.js';
 import { buildCssIgnoreMap, buildJsxIgnoreMap, applyIgnoreMap } from './ignore.js';
 import { clearEnvInClientCache } from './rules/no-env-in-client.js';
 import {
@@ -77,11 +78,11 @@ export async function analyze({ files, config, rules, projectRoot, licenseState:
       continue;
     }
 
-    const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+    const parser = getParserForFile(filePath);
 
-    if (ext === 'css') {
+    if (parser?.id === 'css') {
       violations.push(...analyzeCss(filePath, code, config, rules, definedTokens, usedVarRefs, spacingUsages));
-    } else if (ext === 'tsx' || ext === 'jsx') {
+    } else if (parser?.id === 'jsx') {
       violations.push(...analyzeJsx(filePath, code, config, rules, usedVarRefs));
     }
   }

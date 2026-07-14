@@ -1,7 +1,6 @@
 import { parse as parseColor, formatHex } from 'culori';
 import type { TSESTree } from '@typescript-eslint/types';
-import { parseCss } from '../parsers/css.js';
-import { parseJsx } from '../parsers/jsx.js';
+import { getParserForFile } from '../parsers/registry.js';
 import { isVarToken, matchColorValues, parseValue } from '../values/parse-value.js';
 
 export interface ExtractedTokens {
@@ -159,10 +158,12 @@ export function extract(files: Map<string, string>): ExtractedTokens {
   const QUOTED_FONT_RE = /['"]([A-Za-z][^'"]{1,50})['"]/g;
 
   for (const [filePath, code] of files) {
-    const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+    const parser = getParserForFile(filePath);
+    if (!parser) continue;
+    const parsed = parser.parse(code, filePath);
 
-    if (ext === 'css') {
-      const root = parseCss(code);
+    if (parsed.kind === 'css') {
+      const root = parsed.root;
       root.walkDecls((decl) => processDecl(decl.prop, decl.value, tokens));
       root.walkRules(':root', (rule) => {
         rule.walkDecls(/^--/, (decl) => {
@@ -180,8 +181,8 @@ export function extract(files: Map<string, string>): ExtractedTokens {
           }
         });
       });
-    } else if (ext === 'tsx' || ext === 'jsx') {
-      const ast = parseJsx(code);
+    } else if (parsed.kind === 'jsx') {
+      const ast = parsed.ast;
       walkAst(ast, (node) => {
         // Direct color JSX attribute: <Comp color="#ff0000" />
         if (node.type === 'JSXAttribute') {

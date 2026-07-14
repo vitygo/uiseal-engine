@@ -13,6 +13,8 @@ import {
   resolveBaselineResult,
   setBaselineEnabled,
   fetchAppConfig,
+  getParserForFile,
+  buildGlob,
 } from '@uiseal/core';
 import type { Violation, BaselineState } from '@uiseal/core';
 
@@ -58,14 +60,14 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
     filePaths = output
       .split('\n')
       .map((f) => f.trim())
-      .filter((f) => /\.(tsx|jsx|css)$/.test(f));
+      .filter((f) => getParserForFile(f) !== undefined);
   } else {
     const base = opts.scanPath ? path.resolve(opts.scanPath) : projectRoot;
     const isFile = fs.existsSync(base) && fs.statSync(base).isFile();
     if (isFile) {
-      filePaths = /\.(tsx|jsx|css)$/.test(base) ? [base] : [];
+      filePaths = getParserForFile(base) !== undefined ? [base] : [];
     } else {
-      filePaths = await glob('**/*.{tsx,jsx,css,module.css}', {
+      filePaths = await glob(buildGlob(), {
         cwd: base,
         ignore: ['**/node_modules/**', ...config.ignore],
         absolute: true,

@@ -43,6 +43,7 @@ vi.mock('@uiseal/core', () => ({
     securityIssuesFound: 0,
   }),
   formatDiffAsMarkdown: vi.fn().mockReturnValue(''),
+  buildGlob: vi.fn().mockReturnValue('**/*.{tsx,jsx,css,module.css}'),
 }));
 
 vi.mock('glob', () => ({ glob: vi.fn().mockResolvedValue([]) }));

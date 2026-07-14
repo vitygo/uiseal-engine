@@ -9,6 +9,7 @@ import {
   allRules,
   diffScans,
   formatDiffAsMarkdown,
+  buildGlob,
 } from '@uiseal/core';
 import type { ViolationSnapshot, DiffResult } from '@uiseal/core';
 import type { Violation, uisealConfig } from '@uiseal/core';
@@ -44,7 +45,7 @@ function violationToSnapshot(v: Violation): ViolationSnapshot {
 }
 
 async function scanFiles(projectRoot: string, config: uisealConfig): Promise<ViolationSnapshot[]> {
-  const filePaths = await glob('**/*.{tsx,jsx,css,module.css}', {
+  const filePaths = await glob(buildGlob(), {
     cwd: projectRoot,
     ignore: ['**/node_modules/**', ...config.ignore],
     absolute: true,

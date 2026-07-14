@@ -16,6 +16,8 @@ export {
 export { parseCss } from './parsers/css.js';
 export { parseJsx } from './parsers/jsx.js';
 export type { ParseResult } from './parsers/jsx.js';
+export { getParserForFile, supportedExtensions, buildGlob } from './parsers/registry.js';
+export type { ParserEntry, ParsedFile } from './parsers/registry.js';
 export type { Rule, RuleContext, Severity } from './rules/types.js';
 export { allRules, securityRules } from './rules/index.js';
 export { analyze } from './runner.js';

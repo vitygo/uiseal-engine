@@ -12,13 +12,14 @@ import {
   setBaselineEnabled,
   readBaselineEntries,
   resolveBaselineResult,
+  buildGlob,
 } from '@uiseal/core';
 
 // Always exclude these when scanning for baseline operations.
 const IGNORE = ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.next/**', '**/*.min.css'];
 
 async function scanFiles(projectRoot: string, configIgnore: string[]): Promise<Map<string, string>> {
-  const paths = await glob('**/*.{tsx,jsx,css,module.css}', {
+  const paths = await glob(buildGlob(), {
     cwd: projectRoot,
     ignore: [...IGNORE, ...configIgnore],
     absolute: true,
