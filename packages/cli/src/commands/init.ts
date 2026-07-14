@@ -2,9 +2,10 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { glob } from 'glob';
-import { extract, clusterColors, buildGlob } from '@uiseal/core';
+import { extract, clusterColors, buildGlob, getSourceById, detectSources } from '@uiseal/core';
 import type { ExtractedTokens } from '@uiseal/core';
 import type { ColorCluster } from '@uiseal/core';
+import type { SourceTokens } from '@uiseal/core';
 import { intro, outro, spinner, confirm, text, note, select, isCancel, cancel } from '@clack/prompts';
 
 const MIN_COUNT = 2;
@@ -139,10 +140,231 @@ function buildConfigJson(
   return JSON.stringify(config, null, 2);
 }
 
+// ── Flat review flow (Tailwind / CSS vars sources) ──────────────────────────
+// SourceTokens (from a real token source) carries no usage counts or color
+// clusters — unlike code-scan's ExtractedTokens, there's nothing to count or
+// cluster since these values ARE the user's actual design tokens, not
+// candidates inferred from repetition. This mirrors the per-category
+// confirm-or-edit shape of the code-scan review below, just against flat
+// arrays/records instead of Maps.
+
+function colorNoteFlat(entries: [string, string][]): string {
+  const useColor = process.stdout.hasColors?.() ?? false;
+  if (entries.length === 0) return '(none found)';
+  return entries.map(([name, hex]) => `${colorSquare(hex, useColor)} ${name}: ${hex}`).join('\n');
+}
+
+function numericNoteFlat(values: number[]): string {
+  if (values.length === 0) return '(none found)';
+  return values.map((v) => `${v}px`).join('   ');
+}
+
+function familyNoteFlat(values: string[]): string {
+  if (values.length === 0) return '(none found)';
+  return values.map((v) => `"${v}"`).join('   ');
+}
+
+interface ReviewedTokens {
+  colorsRecord: Record<string, string>;
+  spacingValues: number[];
+  fontSizeValues: number[];
+  fontFamilyValues: string[];
+  radiiValues: number[];
+}
+
+async function reviewSourceTokens(tokens: SourceTokens): Promise<ReviewedTokens> {
+  const colorEntries = Object.entries(tokens.colors);
+  note(colorNoteFlat(colorEntries), `Colors — ${colorEntries.length} found`);
+  let colorsRecord: Record<string, string>;
+  if (colorEntries.length === 0) {
+    colorsRecord = parseManualColors(
+      await askText('No colors found. Enter hex values manually (comma-separated):', '#ffffff, #000000'),
+    );
+  } else {
+    const use = await askConfirm('Use these colors as your design tokens?');
+    colorsRecord = use
+      ? tokens.colors
+      : parseManualColors(await askText('Enter hex colors manually (comma-separated):', '#ffffff, #000000'));
+  }
+
+  note(numericNoteFlat(tokens.spacing), `Spacing — ${tokens.spacing.length} value${tokens.spacing.length !== 1 ? 's' : ''} found`);
+  let spacingValues: number[];
+  if (tokens.spacing.length === 0) {
+    spacingValues = parseManualNumbers(
+      await askText('No spacing values found. Enter values in px (comma-separated):', '4, 8, 16, 24, 32'),
+    );
+  } else {
+    const use = await askConfirm('Use these spacing values?');
+    spacingValues = use
+      ? tokens.spacing
+      : parseManualNumbers(await askText('Enter spacing values in px (comma-separated):', '4, 8, 16, 24, 32'));
+  }
+
+  note(numericNoteFlat(tokens.fontSizes), `Font sizes — ${tokens.fontSizes.length} value${tokens.fontSizes.length !== 1 ? 's' : ''} found`);
+  let fontSizeValues: number[];
+  if (tokens.fontSizes.length === 0) {
+    fontSizeValues = parseManualNumbers(
+      await askText('No font sizes found. Enter values in px (comma-separated):', '12, 14, 16, 18, 24, 32'),
+    );
+  } else {
+    const use = await askConfirm('Use these font sizes?');
+    fontSizeValues = use
+      ? tokens.fontSizes
+      : parseManualNumbers(
+          await askText('Enter font sizes in px (comma-separated):', '12, 14, 16, 18, 24, 32'),
+        );
+  }
+
+  note(familyNoteFlat(tokens.fontFamilies), `Font families — ${tokens.fontFamilies.length} found`);
+  let fontFamilyValues: string[];
+  if (tokens.fontFamilies.length === 0) {
+    fontFamilyValues = [];
+  } else {
+    const use = await askConfirm('Use these font families?');
+    fontFamilyValues = use
+      ? tokens.fontFamilies
+      : parseManualStrings(await askText('Enter font family names (comma-separated):', 'Inter, JetBrains Mono'));
+  }
+
+  note(numericNoteFlat(tokens.radii), `Radii — ${tokens.radii.length} value${tokens.radii.length !== 1 ? 's' : ''} found`);
+  let radiiValues: number[];
+  if (tokens.radii.length === 0) {
+    radiiValues = parseManualNumbers(await askText('No radii found. Enter values in px (comma-separated):', '4, 8'));
+  } else {
+    const use = await askConfirm('Use these border radii?');
+    radiiValues = use
+      ? tokens.radii
+      : parseManualNumbers(await askText('Enter border radius values in px (comma-separated):', '4, 8'));
+  }
+
+  return { colorsRecord, spacingValues, fontSizeValues, fontFamilyValues, radiiValues };
+}
+
+// ── Source resolution ────────────────────────────────────────────────────────
+
+const VALID_FROM_IDS = ['tailwind', 'css-vars', 'code'];
+
+async function resolveSourceChoice(fromOpt: string | undefined, cwd: string): Promise<string> {
+  if (fromOpt) {
+    if (fromOpt === 'code') return 'code-scan';
+    if (!VALID_FROM_IDS.includes(fromOpt) || !getSourceById(fromOpt)) {
+      process.stderr.write(
+        `Unknown token source "${fromOpt}". Available: ${VALID_FROM_IDS.join(', ')}.\n`,
+      );
+      process.exit(1);
+    }
+    return fromOpt;
+  }
+
+  // Auto-detect: code-scan is always "found" (confidence 0.1, the fallback
+  // of last resort) — only ask the user when a REAL source is also present.
+  const detected = await detectSources(cwd);
+  const realSources = detected.filter((d) => d.source.id !== 'code-scan');
+
+  if (realSources.length === 0) {
+    return 'code-scan';
+  }
+
+  if (realSources.length === 1 && realSources[0]!.result.confidence > 0.5) {
+    const { source, result } = realSources[0]!;
+    note(
+      `Found tokens in ${result.file ? path.relative(cwd, result.file) : source.label} — using ${source.label} as token source.`,
+      'Auto-detected',
+    );
+    return source.id;
+  }
+
+  const options = detected.map(({ source, result }) => ({
+    value: source.id,
+    label:
+      source.id === 'code-scan'
+        ? `${source.label} (fallback)`
+        : `${source.label}${result.file ? ` (${path.relative(cwd, result.file)})` : ''}`,
+  }));
+  const answer = await select({
+    message: 'Found design tokens in multiple places. Which should uiseal use as the source of truth?',
+    options,
+  });
+  if (isCancel(answer)) bail();
+  return answer as string;
+}
+
+async function askSeverity(): Promise<'warn' | 'error'> {
+  const severityAnswer = await select({
+    message: 'How strict should violations be treated?',
+    options: [
+      {
+        value: 'warn',
+        label: 'warn',
+        hint: 'flag issues but never block (recommended for projects with existing drift)',
+      },
+      {
+        value: 'error',
+        label: 'error',
+        hint: 'block commits and PRs on any violation (recommended for new projects)',
+      },
+    ],
+  });
+  if (isCancel(severityAnswer)) bail();
+  return severityAnswer as 'warn' | 'error';
+}
+
+// ── Tailwind / CSS-vars init flow ───────────────────────────────────────────
+
+async function runSourceInit(sourceId: string, cwd: string, configPath: string): Promise<void> {
+  const source = getSourceById(sourceId)!;
+
+  const s = spinner();
+  s.start(`Reading ${source.label}…`);
+
+  const detected = await source.detect(cwd);
+  if (!detected.found) {
+    s.stop('Not found.');
+    process.stderr.write(`No ${source.label} found in this project.\n`);
+    process.exit(1);
+  }
+
+  let tokens: SourceTokens;
+  try {
+    tokens = await source.extract(cwd);
+  } catch (err) {
+    s.stop('Extraction failed.');
+    process.stderr.write(`Error: ${(err as Error).message}\n`);
+    process.exit(2);
+  }
+  s.stop(`Read ${detected.file ? path.relative(cwd, detected.file) : source.label}.`);
+
+  const { colorsRecord, spacingValues, fontSizeValues, fontFamilyValues, radiiValues } =
+    await reviewSourceTokens(tokens);
+
+  const severity = await askSeverity();
+
+  const configSource = buildConfigJson(
+    colorsRecord,
+    spacingValues,
+    fontSizeValues,
+    fontFamilyValues,
+    radiiValues,
+    severity,
+  );
+
+  fs.writeFileSync(configPath, configSource, 'utf8');
+
+  outro(
+    `Wrote ${configPath}\n` +
+      `Source: ${source.label}${detected.file ? ` (${path.relative(cwd, detected.file)})` : ''}\n` +
+      `Run 'uiseal check' to scan your project.`,
+  );
+}
+
 export const initCommand = new Command('init')
   .description('Interactively extract design tokens from source and write a uiseal.config.json draft')
   .option('-f, --force', 'Overwrite an existing config file')
-  .action(async (opts: { force?: boolean }) => {
+  .option(
+    '--from <source>',
+    'Token source to use: tailwind | css-vars | code (default: auto-detect)',
+  )
+  .action(async (opts: { force?: boolean; from?: string }) => {
     const configPath = path.resolve('uiseal.config.json');
 
     if (fs.existsSync(configPath) && !opts.force) {
@@ -153,6 +375,14 @@ export const initCommand = new Command('init')
     }
 
     intro('uiseal init');
+
+    const cwd = process.cwd();
+    const sourceId = await resolveSourceChoice(opts.from, cwd);
+
+    if (sourceId !== 'code-scan') {
+      await runSourceInit(sourceId, cwd, configPath);
+      return;
+    }
 
     // ── Scan ────────────────────────────────────────────────────────────────
     let extracted!: ExtractedTokens;
