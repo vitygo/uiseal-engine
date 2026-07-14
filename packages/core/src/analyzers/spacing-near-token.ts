@@ -2,6 +2,7 @@ import type { Root } from 'postcss';
 import type { uisealConfig } from '../config/schema.js';
 import type { Violation } from '../types.js';
 import { parseValue } from '../values/parse-value.js';
+import { findNearestNumeric } from '../values/nearest-token.js';
 
 const SPACING_PROP_RE =
   /^(margin(-top|-right|-bottom|-left)?|padding(-top|-right|-bottom|-left)?|gap|row-gap|column-gap|top|left|right|bottom)$/;
@@ -71,16 +72,16 @@ export function analyzeSpacingNearToken(
   const suppressKeys = new Set<string>();
 
   for (const usage of usages) {
-    const nearest = findNearest(usage.valuePx, scale);
+    const nearest = findNearestNumeric(usage.valuePx, scale, { threshold: NEAR_MISS_THRESHOLD });
     if (nearest === null) continue;
-    const diff = Math.abs(usage.valuePx - nearest);
-    if (diff === 0 || diff > NEAR_MISS_THRESHOLD) continue;
+    const diff = nearest.distance;
+    if (diff === 0 || !nearest.withinThreshold) continue;
 
     suppressKeys.add(makeSuppressKey(usage));
     violations.push({
       ruleId: 'spacing-near-token',
       severity,
-      message: `Spacing value ${usage.valuePx}px is ${diff}px away from token ${nearest}px. Did you mean ${nearest}px? If intentional, add to your spacing scale.`,
+      message: `Spacing value ${usage.valuePx}px is ${diff}px away from token ${nearest.value}px. Did you mean ${nearest.value}px? If intentional, add to your spacing scale.`,
       file: usage.file,
       line: usage.line,
       column: usage.column,
@@ -88,20 +89,6 @@ export function analyzeSpacingNearToken(
   }
 
   return { violations, suppressKeys };
-}
-
-function findNearest(value: number, scale: number[]): number | null {
-  if (scale.length === 0) return null;
-  let nearest = scale[0]!;
-  let nearestDist = Math.abs(value - nearest);
-  for (let i = 1; i < scale.length; i++) {
-    const d = Math.abs(value - scale[i]!);
-    if (d < nearestDist || (d === nearestDist && scale[i]! < nearest)) {
-      nearestDist = d;
-      nearest = scale[i]!;
-    }
-  }
-  return nearest;
 }
 
 export function makeSuppressKey(usage: SpacingUsage): string {
