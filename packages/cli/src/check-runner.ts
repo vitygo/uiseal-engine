@@ -15,13 +15,15 @@ import {
   fetchAppConfig,
   getParserForFile,
   buildGlob,
+  applyFixes,
 } from '@uiseal/core';
-import type { Violation, BaselineState } from '@uiseal/core';
+import type { Violation, BaselineState, FixResult } from '@uiseal/core';
 
 const RESET = '\x1b[0m';
 const CYAN = '\x1b[36m';
 const YELLOW = '\x1b[33m';
 const GREEN = '\x1b[32m';
+const RED = '\x1b[31m';
 const DIM = '\x1b[2m';
 
 export interface CheckOptions {
@@ -32,6 +34,8 @@ export interface CheckOptions {
   updateBaseline?: boolean;
   noBaseline?: boolean;
   verbose?: boolean;
+  fix?: boolean;
+  dryRun?: boolean;
 }
 
 export interface CheckResult {
@@ -87,6 +91,40 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
 
   const { violations: rawViolations } = await analyze({ files, config, rules: allRules });
   const resolvedBaselinePath = path.resolve(projectRoot, config.baseline.path);
+
+  // --fix / --dry-run: apply (or preview) fixes against the raw, unfiltered
+  // violation set — fixing source files is orthogonal to baseline
+  // debt-tracking, so baseline status/suppression doesn't apply here.
+  if (opts.fix || opts.dryRun) {
+    const dryRun = opts.dryRun === true;
+    const results = applyFixes(rawViolations, { dryRun });
+    process.stdout.write(formatFixSummary(results, dryRun));
+
+    const fixedKeys = new Set<string>();
+    for (const r of results) {
+      for (const a of r.applied) {
+        fixedKeys.add(`${r.file}|${a.line}|${a.column}|${a.ruleId}|${a.oldValue}`);
+      }
+    }
+    const hasUnfixedErrors = rawViolations.some(
+      (v) =>
+        v.severity === 'error' &&
+        !fixedKeys.has(`${v.file}|${v.line}|${v.column}|${v.ruleId}|${v.oldValue ?? ''}`),
+    );
+
+    const fixBaseline: BaselineState = {
+      status: 'disabled',
+      resolvedPath: resolvedBaselinePath,
+      counts: {
+        total: rawViolations.length,
+        baselined: 0,
+        new: rawViolations.length,
+        resolved: 0,
+        baselineTotal: 0,
+      },
+    };
+    return { violations: rawViolations, hasErrors: hasUnfixedErrors, baseline: fixBaseline };
+  }
 
   // --update-baseline: write all current violations as the new baseline, exit 0.
   if (opts.updateBaseline) {
@@ -153,6 +191,64 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
     hasErrors: violations.some((v) => v.severity === 'error'),
     baseline,
   };
+}
+
+function relPath(file: string): string {
+  const rel = path.relative(process.cwd(), file);
+  return rel.startsWith('..') ? file : rel;
+}
+
+function formatFixSummary(results: FixResult[], dryRun: boolean): string {
+  const STRIKE = '\x1b[9m';
+  const lines: string[] = [''];
+
+  if (dryRun) {
+    lines.push(`${YELLOW}DRY RUN — no files modified${RESET}`);
+    lines.push('');
+  }
+
+  let totalApplied = 0;
+  const skippedByReason = new Map<string, number>();
+
+  for (const result of results) {
+    if (result.applied.length > 0) {
+      lines.push(`  ${DIM}${relPath(result.file)}${RESET}`);
+      for (const a of result.applied) {
+        const loc = `L${a.line}:`.padEnd(6);
+        lines.push(
+          `    ${DIM}${loc}${RESET} ${RED}${STRIKE}${a.oldValue}${RESET}  →  ${GREEN}${a.newValue}${RESET}`,
+        );
+      }
+      lines.push('');
+    }
+    totalApplied += result.applied.length;
+    for (const s of result.skipped) {
+      skippedByReason.set(s.reason, (skippedByReason.get(s.reason) ?? 0) + 1);
+    }
+  }
+
+  const filesChanged = results.filter((r) => r.applied.length > 0).length;
+  const totalSkipped = [...skippedByReason.values()].reduce((a, b) => a + b, 0);
+  const skippedBreakdown = [...skippedByReason.entries()]
+    .map(([reason, count]) => (skippedByReason.size > 1 ? `${count} ${reason}` : reason))
+    .join(', ');
+  const skippedSummary = totalSkipped > 0 ? ` (${totalSkipped} skipped: ${skippedBreakdown})` : '';
+
+  if (totalApplied === 0) {
+    lines.push(`${YELLOW}No auto-fixable violations found.${RESET}${skippedSummary}`);
+    lines.push('');
+    return lines.join('\n');
+  }
+
+  const verb = dryRun ? 'Would fix' : 'FIXED';
+  const summaryColor = dryRun ? CYAN : GREEN;
+  lines.push(
+    `${summaryColor}${verb} ${totalApplied} violation${totalApplied !== 1 ? 's' : ''} in ` +
+      `${filesChanged} file${filesChanged !== 1 ? 's' : ''}${RESET}${YELLOW}${skippedSummary}${RESET}`,
+  );
+  lines.push('');
+
+  return lines.join('\n');
 }
 
 async function printAppConfigBanner(projectRoot: string): Promise<void> {

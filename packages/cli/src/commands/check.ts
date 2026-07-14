@@ -10,9 +10,11 @@ export const checkCommand = new Command('check')
   .option('--update-baseline', 'Scan, write all current violations to the baseline file, exit 0')
   .option('--no-baseline', 'Ignore the baseline entirely and report all violations')
   .option('--verbose', 'Show full verbose output even when violation count exceeds 50')
+  .option('--fix', 'Apply suggested fixes to source files')
+  .option('--dry-run', 'Show what --fix would change without writing any files')
   .action(async (
     scanPath: string | undefined,
-    opts: { config?: string; staged?: boolean; report?: boolean; updateBaseline?: boolean; baseline?: boolean; verbose?: boolean },
+    opts: { config?: string; staged?: boolean; report?: boolean; updateBaseline?: boolean; baseline?: boolean; verbose?: boolean; fix?: boolean; dryRun?: boolean },
   ) => {
     try {
       const { hasErrors } = await runCheck({
@@ -24,6 +26,8 @@ export const checkCommand = new Command('check')
         // Commander turns --no-baseline into baseline=false.
         noBaseline: opts.baseline === false,
         verbose: opts.verbose,
+        fix: opts.fix,
+        dryRun: opts.dryRun,
       });
       // Use exitCode rather than process.exit() so Node.js drains stdout before
       // terminating — large reports would otherwise lose the trailing summary.

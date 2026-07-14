@@ -22,7 +22,19 @@ const isInteractive =
   process.stdout.isTTY === true &&
   process.argv.length <= 2;
 
-if (isInteractive) {
+// Safety gate: --fix writes to source files, so it must only ever run through
+// the non-interactive commander dispatch below (uiseal check --fix), never
+// from a bare `uiseal --fix` in a TTY session where the interactive picker
+// would otherwise take over.
+const topLevelArgs = process.argv.slice(2);
+const knownCommands = ['check', 'init', 'install-hooks', 'baseline', 'diff'];
+const hasKnownCommand = topLevelArgs.some((a) => knownCommands.includes(a));
+const requestedFix = topLevelArgs.includes('--fix') || topLevelArgs.includes('--dry-run');
+
+if (!hasKnownCommand && requestedFix && process.stdin.isTTY === true && process.stdout.isTTY === true) {
+  process.stdout.write('Fix mode requires non-interactive usage: uiseal check --fix\n');
+  process.exitCode = 1;
+} else if (isInteractive) {
   // Loop so that setup commands (init, install-hooks) can return to the TUI.
   while (true) {
     let pendingCommand: string[] | null = null;
