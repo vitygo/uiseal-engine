@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { analyze } from '../runner.js';
 import { noArbitrarySpacing } from '../rules/no-arbitrary-spacing.js';
+import { noHardcodedColor } from '../rules/no-hardcoded-color.js';
+import { noArbitraryFontSize } from '../rules/no-arbitrary-font-size.js';
+import { noArbitraryRadius } from '../rules/no-arbitrary-radius.js';
 import type { uisealConfig } from '../config/schema.js';
 
 // Scale with 5+ values to enable the checker
@@ -132,5 +135,63 @@ describe('spacing-near-token analyzer', () => {
     const v = vs.find((x) => x.ruleId === 'spacing-near-token');
     expect(v).toBeDefined();
     expect(v!.message).toContain('18px');
+  });
+
+  it('sets fix.suggested for a near-miss value (18px → 16px)', async () => {
+    const config: uisealConfig = {
+      ...baseConfig,
+      tokens: { ...baseConfig.tokens, spacing: [4, 8, 16, 20, 32] },
+    };
+    const vs = await run('.a { padding: 18px; }', config);
+    const v = vs.find((x) => x.ruleId === 'spacing-near-token');
+    expect(v).toBeDefined();
+    expect(v!.fix).toEqual({ suggested: '16px' });
+    expect(v!.message).toContain('Did you mean');
+  });
+
+  it('has no fix field for a far-miss value (100px, nothing close)', async () => {
+    const config: uisealConfig = {
+      ...baseConfig,
+      tokens: { ...baseConfig.tokens, spacing: [4, 8, 16, 32, 48] },
+    };
+    const vs = await run('.a { padding: 100px; }', config);
+    expect(vs.filter((x) => x.ruleId === 'spacing-near-token')).toHaveLength(0);
+  });
+
+  it('parity: all 4 value kinds (color, spacing, font-size, radius) set fix.suggested', async () => {
+    const config: uisealConfig = {
+      tokens: {
+        colors: { '--primary': '#1a73e8' },
+        spacing: [4, 8, 16, 20, 32],
+        fontSizes: [14, 16, 18],
+        fontFamilies: ['Inter'],
+        radii: [4, 8],
+      },
+      rules: {},
+      ignore: [],
+    };
+    const css = `
+      .a {
+        color: #1b74e9;
+        padding: 18px;
+        font-size: 15px;
+        border-radius: 6px;
+      }
+    `;
+    const { violations } = await analyze({
+      files: new Map([['test.css', css]]),
+      config,
+      rules: [noHardcodedColor, noArbitrarySpacing, noArbitraryFontSize, noArbitraryRadius],
+    });
+
+    const color = violations.find((v) => v.ruleId === 'no-hardcoded-color');
+    const spacing = violations.find((v) => v.ruleId === 'spacing-near-token');
+    const fontSize = violations.find((v) => v.ruleId === 'no-arbitrary-font-size');
+    const radius = violations.find((v) => v.ruleId === 'no-arbitrary-radius');
+
+    expect(color?.fix?.suggested).toBeDefined();
+    expect(spacing?.fix?.suggested).toBeDefined();
+    expect(fontSize?.fix?.suggested).toBeDefined();
+    expect(radius?.fix?.suggested).toBeDefined();
   });
 });
