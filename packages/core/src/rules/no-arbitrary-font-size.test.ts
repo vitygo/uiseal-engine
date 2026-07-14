@@ -67,6 +67,27 @@ describe('no-arbitrary-font-size', () => {
     expect(vs).toHaveLength(0);
   });
 
+  it('flags a value just outside the scale but within threshold, with a suggested fix', async () => {
+    // 21px is 1px from 20px (within the 2px threshold), unambiguously nearest.
+    const vs = await run('.a { font-size: 21px; }');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.fix).toEqual({ suggested: '20px' });
+    expect(vs[0]!.message).toContain('20px');
+  });
+
+  it('flags a value far from any token with no suggested fix', async () => {
+    const vs = await run('.a { font-size: 100px; }');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.fix).toBeUndefined();
+    expect(vs[0]!.message).not.toContain('Did you mean');
+  });
+
+  it('flags a rem value just outside the scale with a suggested fix (1.3125rem = 21px near 20px)', async () => {
+    const vs = await run('.a { font-size: 1.3125rem; }');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.fix).toEqual({ suggested: '20px' });
+  });
+
   it('flags arbitrary font-size in JSX inline style', async () => {
     const code = `export function A() {
   return <p style={{ fontSize: '13px' }} />;

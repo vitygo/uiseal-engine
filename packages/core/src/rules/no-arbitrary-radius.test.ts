@@ -63,6 +63,30 @@ describe('no-arbitrary-radius', () => {
     expect(vs).toHaveLength(1);
   });
 
+  it('flags a value just outside the scale but within threshold, with a suggested fix', async () => {
+    // 6px is 2px from both 4px and 8px (tie, within the 2px threshold) — ties prefer the smaller value.
+    const vs = await run('.a { border-radius: 6px; }');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.fix).toEqual({ suggested: '4px' });
+    expect(vs[0]!.message).toContain('4px');
+  });
+
+  it('flags a value far from any token with no suggested fix', async () => {
+    const vs = await run('.a { border-radius: 50px; }');
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.fix).toBeUndefined();
+    expect(vs[0]!.message).not.toContain('Did you mean');
+  });
+
+  it('does not apply a nearest-token suggestion to a rem radius, even when close to a token (0.5rem = 8px, an exact token)', async () => {
+    // Regression guard for the rem-radius passthrough: rem never resolves to px for radius,
+    // so even a value that WOULD be an exact/near token match in px stays a plain, fix-less violation.
+    const vs = await run('.a { border-radius: 0.4375rem; }'); // 7px, 1px from the 8px token
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.fix).toBeUndefined();
+    expect(vs[0]!.message).not.toContain('Did you mean');
+  });
+
   it('checks each part of a multi-value shorthand', async () => {
     // 4px is allowed; 6px is not
     const vs = await run('.a { border-radius: 4px 6px; }');
