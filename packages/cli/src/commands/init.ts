@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { glob } from 'glob';
-import { extract, clusterColors, buildGlob, getSourceById, detectSources } from '@uiseal/core';
+import { extract, clusterColors, buildGlob, getSourceById, getAllSources, detectSources } from '@uiseal/core';
 import type { ExtractedTokens } from '@uiseal/core';
 import type { ColorCluster } from '@uiseal/core';
 import type { SourceTokens } from '@uiseal/core';
@@ -242,14 +242,16 @@ async function reviewSourceTokens(tokens: SourceTokens): Promise<ReviewedTokens>
 
 // ── Source resolution ────────────────────────────────────────────────────────
 
-const VALID_FROM_IDS = ['tailwind', 'css-vars', 'code'];
-
+// 'code' is a friendly --from alias for the 'code-scan' source id — every
+// other valid id comes straight from the registry, so a newly-registered
+// source is immediately valid here with no change to this file.
 async function resolveSourceChoice(fromOpt: string | undefined, cwd: string): Promise<string> {
   if (fromOpt) {
     if (fromOpt === 'code') return 'code-scan';
-    if (!VALID_FROM_IDS.includes(fromOpt) || !getSourceById(fromOpt)) {
+    if (!getSourceById(fromOpt)) {
+      const available = ['code', ...getAllSources().map((s) => s.id).filter((id) => id !== 'code-scan')];
       process.stderr.write(
-        `Unknown token source "${fromOpt}". Available: ${VALID_FROM_IDS.join(', ')}.\n`,
+        `Unknown token source "${fromOpt}". Available: ${available.join(', ')}.\n`,
       );
       process.exit(1);
     }
