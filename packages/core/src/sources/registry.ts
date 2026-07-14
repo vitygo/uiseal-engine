@@ -1,10 +1,11 @@
 import { codeScanSource } from './code-scan.js';
 import { tailwindSource } from './tailwind.js';
+import { cssVarsSource } from './css-vars.js';
 import type { DetectResult, TokenSource } from './types.js';
 
 // Adding a new token source is a one-file task: write it against
 // TokenSource, then push it into this array.
-const sources: TokenSource[] = [tailwindSource, codeScanSource];
+const sources: TokenSource[] = [tailwindSource, cssVarsSource, codeScanSource];
 
 export function getAllSources(): TokenSource[] {
   return [...sources];
