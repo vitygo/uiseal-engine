@@ -1,6 +1,12 @@
 import type { Declaration } from 'postcss';
 import type { Rule, RuleContext } from './types.js';
 import { parseValue, isVarToken } from '../values/parse-value.js';
+import { findNearestNumeric } from '../values/nearest-token.js';
+
+// Radius scales are typically small, tightly-packed values (0/4/8/12/16px),
+// so a threshold half of the common 4px step catches genuine near-misses
+// without conflating adjacent tokens.
+const RADIUS_NEAR_MISS_THRESHOLD = 2;
 
 export const noArbitraryRadius: Rule = {
   id: 'no-arbitrary-radius',
@@ -22,16 +28,35 @@ export const noArbitraryRadius: Rule = {
     const parts = decl.value.trim().replace(/\//g, ' ').split(/\s+/);
     for (const part of parts) {
       if (!isAllowedPart(part, ctx)) {
+        const suggestion = nearestRadiusSuggestion(part, ctx);
         ctx.report({
           ruleId: 'no-arbitrary-radius',
-          message: `Arbitrary ${decl.prop} value "${part}". Use a radius token.`,
+          message:
+            suggestion !== null
+              ? `Arbitrary ${decl.prop} value "${part}". Did you mean ${suggestion}px? Use a radius token.`
+              : `Arbitrary ${decl.prop} value "${part}". Use a radius token.`,
           line: decl.source?.start?.line ?? 1,
           column: decl.source?.start?.column ?? 0,
+          ...(suggestion !== null ? { fix: { suggested: `${suggestion}px` } } : {}),
         });
       }
     }
   },
 };
+
+// Only px values are ever evaluated against the radii scale — a rem radius
+// always falls through to the "unit-bearing, not a token" branch below
+// (isAllowedPart never resolves rem to px for radius), so it never reaches
+// here and never gets a nearest-token suggestion. That is preserved as-is.
+function nearestRadiusSuggestion(part: string, ctx: RuleContext): number | null {
+  if (!part.endsWith('px')) return null;
+  const parsed = parseValue(part);
+  if (parsed.value === null) return null;
+  const nearest = findNearestNumeric(parsed.value, ctx.config.tokens.radii, {
+    threshold: RADIUS_NEAR_MISS_THRESHOLD,
+  });
+  return nearest && nearest.withinThreshold ? nearest.value : null;
+}
 
 function isAllowedPart(part: string, ctx: RuleContext): boolean {
   if (part === '0' || part === 'auto') return true;
