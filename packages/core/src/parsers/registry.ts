@@ -1,5 +1,7 @@
 // Single source of truth for file-type dispatch. To add a new file type,
 // register a ParserEntry here — do not add ext checks elsewhere.
+// To add a new value kind, extend parseValue() in ../values/parse-value.ts —
+// do not regex values in rules.
 
 import type { Root } from 'postcss';
 import type { TSESTree } from '@typescript-eslint/types';

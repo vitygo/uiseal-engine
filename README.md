@@ -63,6 +63,13 @@ Run `uiseal` without arguments to open the interactive terminal UI:
 }
 ```
 
+## Architecture
+
+Two seams keep `@uiseal/core` from growing copy-pasted dispatch logic as it adds file types and value kinds:
+
+- **File-type dispatch** (`packages/core/src/parsers/registry.ts`): every parser (CSS, JSX, …) is a `ParserEntry` registered once, with its own extensions and a `parse()` function. `getParserForFile()`, `supportedExtensions()`, and `buildGlob()` all derive from this registry — nothing else in the codebase (runner, extractor, cli, github-action) hardcodes an extension list or a `**/*.{tsx,jsx,css}`-style glob. To support a new file type, add a `ParserEntry` and a `ParsedFile` variant here; don't add `ext === '...'` checks elsewhere.
+- **Canonical design values** (`packages/core/src/values/parse-value.ts`): `parseValue(raw, propertyHint?)` is the single place that knows how to read a hex/rgb/hsl color, a px/rem length, or a font-family literal, and whether a value is a `var(--…)` token reference. Rules, the extractor, and analyzers call `parseValue()` instead of keeping their own regexes. To support a new value kind, extend `parseValue()`; don't add a new regex to a rule.
+
 ## Packages
 
 | Package | Description |

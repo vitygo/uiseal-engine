@@ -1,6 +1,8 @@
 // Canonical parser for raw CSS-ish design values (colors, lengths, font families).
 // To add a new value kind, extend parseValue here — do not regex values in rules,
 // the extractor, or analyzers.
+// To add a new file type, register a ParserEntry in ../parsers/registry.ts —
+// do not add ext checks elsewhere.
 
 export type DesignValueKind =
   | 'color'
