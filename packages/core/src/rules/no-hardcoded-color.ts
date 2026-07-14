@@ -38,6 +38,7 @@ function checkAndReport(
       line,
       column,
       fix: { suggested: `var(${closest})` },
+      oldValue: value,
     });
   } else {
     ctx.report({

@@ -45,7 +45,7 @@ export const noArbitraryFontSize: Rule = {
           : `Arbitrary font-size "${value}". Use a font-size token.`,
       line: decl.source?.start?.line ?? 1,
       column: decl.source?.start?.column ?? 0,
-      ...(suggestion !== null ? { fix: { suggested: `${suggestion}px` } } : {}),
+      ...(suggestion !== null ? { fix: { suggested: `${suggestion}px` }, oldValue: value } : {}),
     });
   },
 };

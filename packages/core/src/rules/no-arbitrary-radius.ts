@@ -37,7 +37,7 @@ export const noArbitraryRadius: Rule = {
               : `Arbitrary ${decl.prop} value "${part}". Use a radius token.`,
           line: decl.source?.start?.line ?? 1,
           column: decl.source?.start?.column ?? 0,
-          ...(suggestion !== null ? { fix: { suggested: `${suggestion}px` } } : {}),
+          ...(suggestion !== null ? { fix: { suggested: `${suggestion}px` }, oldValue: part } : {}),
         });
       }
     }
