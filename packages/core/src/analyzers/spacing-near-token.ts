@@ -85,6 +85,7 @@ export function analyzeSpacingNearToken(
       file: usage.file,
       line: usage.line,
       column: usage.column,
+      fix: { suggested: `${nearest.value}px` },
     });
   }
 
