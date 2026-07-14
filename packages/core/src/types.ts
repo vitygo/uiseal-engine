@@ -13,6 +13,8 @@ export interface Violation {
   line: number;
   column: number;
   fix?: { suggested: string };
+  /** Raw text the rule matched at (line, column) — lets applyFixes verify the source hasn't drifted before writing fix.suggested over it. */
+  oldValue?: string;
   /** Set when baseline is active: true = in baseline snapshot (debt), false/absent = new issue */
   frozen?: boolean;
   /** Present on variant-sprawl violations: side-by-side structural comparison data */

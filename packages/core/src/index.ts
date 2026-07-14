@@ -49,3 +49,5 @@ export type {
 export { setBaselineEnabled } from './config/writer.js';
 export { diffScans, formatDiffAsMarkdown } from './diff/index.js';
 export type { ViolationSnapshot, DiffResult } from './diff/index.js';
+export { applyFixes } from './fixer/apply-fixes.js';
+export type { FixResult, FixApplied, FixSkipped, ApplyFixesOptions } from './fixer/apply-fixes.js';
