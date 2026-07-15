@@ -8,6 +8,11 @@ import { getParserForFile, type ParsedFile } from './parsers/registry.js';
 import type { VueParsedFile } from './parsers/vue.js';
 import type { AngularParsedFile } from './parsers/angular.js';
 import type { SvelteParsedFile } from './parsers/svelte.js';
+import {
+  walkSvelteTemplate,
+  extractSvelteInlineStyleDecls,
+  extractSvelteClassSegments,
+} from './svelte/template-adapter.js';
 import { extractAngularInlineStyleDecls, extractAngularClassSegments } from './angular/template-adapter.js';
 import { objectExpressionToDecls } from './adapters/object-expr-to-decls.js';
 import { walkVueTemplate, extractVueInlineStyleDecls, extractVueClassSegments } from './vue/template-adapter.js';
@@ -433,8 +438,38 @@ function analyzeSvelte(
     violations.push(...styleViolations);
   }
 
-  // Template analysis (style:/class: directives, static style/class) added
-  // in Commit 3.
+  // Template: style="..."/style:prop directives and class="..."/class:name
+  // directives feed CSS rules / Tailwind checking directly — Svelte's own
+  // AST gives every binding's own precise, already-absolute position (no
+  // offset needed, and no shared-position simplification like Vue/Angular
+  // needed either — see svelte/template-adapter.ts). Tailwind checking
+  // only runs when the caller's rules array actually includes
+  // no-tailwind-arbitrary, matching the same opt-in contract as Vue/Angular.
+  if (parsed.template) {
+    const cssRules = rules.filter((r) => r.checkCssDeclaration !== undefined);
+    const tailwindRule = rules.find((r) => r.id === 'no-tailwind-arbitrary');
+    const tailwindSeverity = tailwindRule ? effectiveSeverity(tailwindRule, config) : 'off';
+
+    walkSvelteTemplate(parsed.template, (node) => {
+      const inlineDecls = extractSvelteInlineStyleDecls(node);
+      for (const decl of inlineDecls) {
+        for (const rule of cssRules) {
+          const sev = effectiveSeverity(rule, config);
+          if (sev === 'off') continue;
+          const ctx = makeContext(filePath, config, violations, sev);
+          rule.checkCssDeclaration!(decl, ctx);
+        }
+        for (const name of extractVarRefs(decl.value)) usedVarRefs.add(name);
+      }
+
+      if (tailwindSeverity !== 'off') {
+        const ctx = makeContext(filePath, config, violations, tailwindSeverity);
+        for (const seg of extractSvelteClassSegments(node)) {
+          checkClassStringForArbitraryValues(seg.text, { line: seg.line, column: seg.column }, ctx);
+        }
+      }
+    });
+  }
 
   return violations;
 }
