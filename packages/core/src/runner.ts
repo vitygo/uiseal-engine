@@ -511,7 +511,10 @@ function analyzeJsx(
   return applyIgnoreMap(violations, ignoreMap);
 }
 
-function walkAst(node: TSESTree.Node, visit: (node: TSESTree.Node) => void): void {
+// Exported for reuse by drift/collect-code-values.ts, which needs the same
+// generic TSESTree walk + inline-style extraction to collect ALL values
+// (not just violations) from JSX files.
+export function walkAst(node: TSESTree.Node, visit: (node: TSESTree.Node) => void): void {
   visit(node);
   const record = node as unknown as Record<string, unknown>;
   for (const key of Object.keys(record)) {
@@ -529,7 +532,7 @@ function walkAst(node: TSESTree.Node, visit: (node: TSESTree.Node) => void): voi
 }
 
 // Convert JSX inline style prop entries into postcss Declaration-like objects.
-function extractInlineStyleDecls(node: TSESTree.Node): Declaration[] {
+export function extractInlineStyleDecls(node: TSESTree.Node): Declaration[] {
   // Match: <Comp style={{ ... }} /> where the JSXAttribute value is a
   // JSXExpressionContainer wrapping an ObjectExpression.
   if (node.type !== 'JSXAttribute') return [];

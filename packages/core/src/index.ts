@@ -56,3 +56,11 @@ export type { DetectedSource } from './sources/registry.js';
 export type { TokenSource, SourceTokens, DetectResult } from './sources/types.js';
 export { extractArbitraryValues } from './tailwind/parse-classes.js';
 export type { TailwindArbitraryValue, TailwindArbitraryCategory } from './tailwind/parse-classes.js';
+export { analyzeDrift } from './drift/analyze-drift.js';
+export type {
+  DriftReport,
+  DriftCategory,
+  DriftedValue,
+  DriftFileRef,
+  AnalyzeDriftOptions,
+} from './drift/analyze-drift.js';
