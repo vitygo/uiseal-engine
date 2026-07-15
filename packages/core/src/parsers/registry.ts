@@ -84,6 +84,19 @@ const registry: ParserEntry[] = [
       return parseAngular(source);
     },
   },
+  {
+    id: 'angular-template',
+    extensions: [],
+    // A standalone external template referenced via templateUrl — not
+    // resolved from the .component.ts side (see parsers/angular.ts), just
+    // discovered directly by the glob like any other file. Its content IS
+    // the whole template, so offset is always 0 (already-absolute
+    // positions), unlike an inline `template: \`...\`` block.
+    suffixes: ['component.html'],
+    parse(source: string): ParsedFile {
+      return { kind: 'angular', isComponent: true, styles: [], template: { content: source, offset: 0 } };
+    },
+  },
 ];
 
 function extOf(filePath: string): string {

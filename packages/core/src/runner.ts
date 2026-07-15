@@ -7,6 +7,7 @@ import type { Rule, RuleContext, Severity } from './rules/types.js';
 import { getParserForFile, type ParsedFile } from './parsers/registry.js';
 import type { VueParsedFile } from './parsers/vue.js';
 import type { AngularParsedFile } from './parsers/angular.js';
+import { extractAngularInlineStyleDecls, extractAngularClassSegments } from './angular/template-adapter.js';
 import { objectExpressionToDecls } from './adapters/object-expr-to-decls.js';
 import { walkVueTemplate, extractVueInlineStyleDecls, extractVueClassSegments } from './vue/template-adapter.js';
 import { checkClassStringForArbitraryValues } from './rules/no-tailwind-arbitrary.js';
@@ -352,8 +353,40 @@ function analyzeAngular(
     violations.push(...styleViolations);
   }
 
-  // Template analysis ([ngStyle], [style.X], class/[ngClass]) added in
-  // Commit 3.
+  // Template: inline styles ([ngStyle], [style.X.unit], static style=...) and
+  // Tailwind classes (class=, [class], [ngClass]) both come from a regex
+  // tag/attribute scan (angular/template-scanner.ts), not an AST — Angular
+  // templates aren't JSX or a compiler-provided AST like Vue's. Every
+  // position the scanner reports is relative to the template STRING it was
+  // given (line 1 = the string's own first line), so parsed.template.offset
+  // is added back — 0 for an external .component.html (the whole file IS
+  // the template, already absolute), the inline template literal's start
+  // line - 1 otherwise (same formula as style blocks, just for template).
+  if (parsed.template) {
+    const { content, offset } = parsed.template;
+    const cssRules = rules.filter((r) => r.checkCssDeclaration !== undefined);
+    const tailwindRule = rules.find((r) => r.id === 'no-tailwind-arbitrary');
+    const tailwindSeverity = tailwindRule ? effectiveSeverity(tailwindRule, config) : 'off';
+
+    const beforeCss = violations.length;
+    for (const decl of extractAngularInlineStyleDecls(content)) {
+      for (const rule of cssRules) {
+        const sev = effectiveSeverity(rule, config);
+        if (sev === 'off') continue;
+        const ctx = makeContext(filePath, config, violations, sev);
+        rule.checkCssDeclaration!(decl, ctx);
+      }
+      for (const name of extractVarRefs(decl.value)) usedVarRefs.add(name);
+    }
+    for (let i = beforeCss; i < violations.length; i++) violations[i]!.line += offset;
+
+    if (tailwindSeverity !== 'off') {
+      const ctx = makeContext(filePath, config, violations, tailwindSeverity);
+      for (const seg of extractAngularClassSegments(content)) {
+        checkClassStringForArbitraryValues(seg.text, { line: seg.line + offset, column: seg.column }, ctx);
+      }
+    }
+  }
 
   return violations;
 }

@@ -5,9 +5,9 @@
 // as a JSX inline style prop, just embedded as raw text in an attribute
 // rather than already being part of the surrounding AST.
 import type { Declaration } from 'postcss';
-import type { TSESTree } from '@typescript-eslint/types';
-import { parseJsx } from '../parsers/jsx.js';
 import { objectExpressionToDecls, makeSyntheticDecl } from '../adapters/object-expr-to-decls.js';
+import { parseExpressionText } from '../adapters/parse-expression-text.js';
+import { extractClassStringsFromExpr } from '../adapters/class-expr-to-strings.js';
 
 // Vue's template AST (@vue/compiler-sfc) is not TSESTree — it has its own
 // node shapes (ElementNode, AttributeNode, DirectiveNode, ...). Using `any`
@@ -34,20 +34,6 @@ export function walkVueTemplate(node: VueNode, visit: (node: VueNode) => void): 
     } else if (child && typeof child === 'object' && 'type' in child) {
       walkVueTemplate(child, visit);
     }
-  }
-}
-
-// Parses a Vue directive expression's raw text (e.g. "{ padding: '13px' }"
-// or "['px-4', cond ? 'mt-[13px]' : 'mt-2']") as a standalone JS expression.
-// Wrapped in parens to force expression (not block-statement) context,
-// matching how `{ ... }` at statement position would otherwise parse as a
-// block.
-function parseExpressionText(exprText: string): ReturnType<typeof parseJsx>['body'][number] | null {
-  try {
-    const program = parseJsx(`(${exprText})`);
-    return program.body[0] ?? null;
-  } catch {
-    return null; // not statically parseable (dynamic/computed) — skip
   }
 }
 
@@ -97,48 +83,6 @@ export interface VueClassSegment {
   text: string;
   line: number;
   column: number;
-}
-
-// Only what's statically analyzable is read, mirroring the JSX Tailwind
-// rule's own philosophy (rules/no-tailwind-arbitrary.ts): a string literal
-// is read directly; object keys are read regardless of their value
-// (:class="{ 'rounded-[7px]': isRound }" — the class name is checkable
-// whether or not isRound ends up true, since this is static analysis, not
-// runtime evaluation); array elements are collected recursively, including
-// BOTH branches of a ternary (either could render). Anything else
-// (identifiers, member expressions, function calls) is skipped.
-function extractClassStringsFromExpr(expr: TSESTree.Node): string[] {
-  if (expr.type === 'Literal' && typeof expr.value === 'string') return [expr.value];
-
-  if (expr.type === 'ObjectExpression') {
-    const names: string[] = [];
-    for (const prop of expr.properties) {
-      if (prop.type !== 'Property') continue;
-      const key = prop.key;
-      const name =
-        key.type === 'Literal' && typeof key.value === 'string'
-          ? key.value
-          : key.type === 'Identifier'
-            ? key.name
-            : null;
-      if (name) names.push(name);
-    }
-    return names;
-  }
-
-  if (expr.type === 'ArrayExpression') {
-    const names: string[] = [];
-    for (const el of expr.elements) {
-      if (el) names.push(...extractClassStringsFromExpr(el));
-    }
-    return names;
-  }
-
-  if (expr.type === 'ConditionalExpression') {
-    return [...extractClassStringsFromExpr(expr.consequent), ...extractClassStringsFromExpr(expr.alternate)];
-  }
-
-  return [];
 }
 
 /**
