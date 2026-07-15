@@ -4,7 +4,7 @@ Deterministic design-system linter for human and AI-generated code.
 
 ## What it is
 
-uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, and JSX files and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
+uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, JSX, and Vue (.vue) files and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
 
 ## Install
 
@@ -109,6 +109,19 @@ uiseal check --fix            # px-[13px] -> px-[12px] when a close token exists
 **Known limitations:**
 - Only what's statically analyzable in `className` is read: a plain string, a template literal's static parts (`` `px-4 ${dynamic}` `` — the `${dynamic}` part is skipped, not evaluated), string-literal arguments to any call expression (covers `cn()`/`clsx()`/`classnames()` without hardcoding those names — `cn('px-4', condition && 'mt-2')` skips the conditional argument), and `+` string concatenation. A bare variable (`className={classes}`) or anything else dynamic is skipped entirely — no false positives, but no coverage either.
 - Fix suggestions substitute the nearest on-token *raw value* back into the same bracket syntax (`px-[13px]` → `px-[12px]`) rather than resolving to the Tailwind utility name that value would correspond to (`px-3`) — the reverse mapping needs your Tailwind config loaded at check-time, not just at init-time. Noted as a future improvement.
+
+## Vue support
+
+A `.vue` Single File Component has two analyzable parts, both checked: the `<style>` block(s) (including `<style lang="scss">` / `<style lang="less">` — nesting, `$variables`, everything the same CSS rules already handle in a standalone `.scss`/`.less` file) and the `<template>` block, for inline `:style`/`style=` values and `class`/`:class` Tailwind arbitrary values (same rules, same [Tailwind support](#tailwind-support) above — a `.vue` template isn't a second, different Tailwind checker).
+
+**What's checked:**
+- Every `<style>` block, parsed with the right CSS dialect for its `lang` attribute, run through the exact same rules as a real `.css`/`.scss`/`.less` file — hardcoded colors, arbitrary spacing/font-size/radius, everything.
+- `:style="{ padding: '13px', color: '#fff' }"` object bindings and static `style="padding: 13px"` attributes in `<template>` — converted to the same synthetic declarations the JSX `style={{}}` adapter already produces, so the same CSS rules run on them.
+- `class="px-4 mt-[13px]"`, `:class="'...'"`, `:class="{ 'mt-[13px]': isActive }"` (object keys are class names, checked regardless of the condition's value — this is static analysis, not runtime evaluation), and `:class="[...]"` arrays (including both branches of a ternary) — same arbitrary-value detection as JSX `className`.
+
+**What's NOT checked:** anything inside `<script>`/`<script setup>` — component logic isn't analyzed for style-related values. Dynamic bindings (`:style="computedStyle"`, `:class="dynamicClasses"`) are skipped — only literal object/array/string forms are statically parseable.
+
+**Usage:** no separate flag or setup — `.vue` is in the glob `uiseal check`/`uiseal init` already scan; `--fix` rewrites both `<style>` CSS values and `<template>` Tailwind classes in the same pass.
 
 ## Packages
 
