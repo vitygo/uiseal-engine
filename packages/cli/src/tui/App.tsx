@@ -107,6 +107,8 @@ export default function App({ onLaunchCommand }: AppProps) {
       setScreen('baseline-menu');
     } else if (cmd === 'diff') {
       setScreen('diff-input');
+    } else if (cmd === 'drift') {
+      runInlineCommand('drift', ['drift']);
     } else if (cmd === 'init') {
       const candidates = ['uiseal.config.json', 'uiseal.config.ts'];
       const existing = candidates.find((f) => existsSync(join(process.cwd(), f)));

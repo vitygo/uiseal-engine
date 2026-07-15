@@ -9,6 +9,7 @@ import { initCommand } from './commands/init.js';
 import { installHooksCommand } from './commands/install-hooks.js';
 import { baselineCommand } from './commands/baseline.js';
 import { diffCommand } from './commands/diff.js';
+import { driftCommand } from './commands/drift.js';
 import React from 'react';
 import { render } from 'ink';
 import App from './tui/App.js';
@@ -27,7 +28,7 @@ const isInteractive =
 // from a bare `uiseal --fix` in a TTY session where the interactive picker
 // would otherwise take over.
 const topLevelArgs = process.argv.slice(2);
-const knownCommands = ['check', 'init', 'install-hooks', 'baseline', 'diff'];
+const knownCommands = ['check', 'init', 'install-hooks', 'baseline', 'diff', 'drift'];
 const hasKnownCommand = topLevelArgs.some((a) => knownCommands.includes(a));
 const requestedFix = topLevelArgs.includes('--fix') || topLevelArgs.includes('--dry-run');
 
@@ -99,6 +100,7 @@ if (!hasKnownCommand && requestedFix && process.stdin.isTTY === true && process.
   program.addCommand(installHooksCommand);
   program.addCommand(baselineCommand);
   program.addCommand(diffCommand);
+  program.addCommand(driftCommand);
 
   program.parse();
 }

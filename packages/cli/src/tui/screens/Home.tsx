@@ -42,6 +42,7 @@ const MENU_ITEMS: MenuItem[] = [
   { command: 'init', description: 'Initialize uiseal.config.json' },
   { command: 'baseline', description: 'Manage design debt baseline' },
   { command: 'diff', description: 'Compare against base branch' },
+  { command: 'drift', description: 'Detect drift between token source and code' },
   { command: 'install-hooks', description: 'Install git pre-commit hooks' },
 ];
 
