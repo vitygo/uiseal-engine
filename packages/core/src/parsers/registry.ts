@@ -9,10 +9,12 @@ import { parseCss } from './css.js';
 import { parseJsx } from './jsx.js';
 import { parseScss } from './scss.js';
 import { parseLess } from './less.js';
+import { parseVue, type VueParsedFile } from './vue.js';
 
 export type ParsedFile =
   | { kind: 'css'; root: Root }
-  | { kind: 'jsx'; ast: TSESTree.Program };
+  | { kind: 'jsx'; ast: TSESTree.Program }
+  | VueParsedFile;
 
 export interface ParserEntry {
   id: string;
@@ -52,6 +54,13 @@ const registry: ParserEntry[] = [
   },
   // Indented Sass (.sass) is a different syntax (no braces/semicolons) that
   // postcss-scss does not parse — it is intentionally NOT registered here.
+  {
+    id: 'vue',
+    extensions: ['vue'],
+    parse(source: string, filePath: string): ParsedFile {
+      return parseVue(source, filePath);
+    },
+  },
 ];
 
 function extOf(filePath: string): string {
