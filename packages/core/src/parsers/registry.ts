@@ -11,12 +11,14 @@ import { parseScss } from './scss.js';
 import { parseLess } from './less.js';
 import { parseVue, type VueParsedFile } from './vue.js';
 import { parseAngular, type AngularParsedFile } from './angular.js';
+import { parseSvelte, type SvelteParsedFile } from './svelte.js';
 
 export type ParsedFile =
   | { kind: 'css'; root: Root }
   | { kind: 'jsx'; ast: TSESTree.Program }
   | VueParsedFile
-  | AngularParsedFile;
+  | AngularParsedFile
+  | SvelteParsedFile;
 
 export interface ParserEntry {
   id: string;
@@ -95,6 +97,13 @@ const registry: ParserEntry[] = [
     suffixes: ['component.html'],
     parse(source: string): ParsedFile {
       return { kind: 'angular', isComponent: true, styles: [], template: { content: source, offset: 0 } };
+    },
+  },
+  {
+    id: 'svelte',
+    extensions: ['svelte'],
+    parse(source: string): ParsedFile {
+      return parseSvelte(source);
     },
   },
 ];

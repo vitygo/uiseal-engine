@@ -39,6 +39,7 @@
     "postcss": "^8.5.15",
     "postcss-less": "^6.0.0",
     "postcss-scss": "^4.0.9",
+    "svelte": "^5.56.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
