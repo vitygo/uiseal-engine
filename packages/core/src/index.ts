@@ -54,3 +54,5 @@ export type { FixResult, FixApplied, FixSkipped, ApplyFixesOptions } from './fix
 export { getAllSources, getSourceById, detectSources } from './sources/registry.js';
 export type { DetectedSource } from './sources/registry.js';
 export type { TokenSource, SourceTokens, DetectResult } from './sources/types.js';
+export { extractArbitraryValues } from './tailwind/parse-classes.js';
+export type { TailwindArbitraryValue, TailwindArbitraryCategory } from './tailwind/parse-classes.js';
