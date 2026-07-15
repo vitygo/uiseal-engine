@@ -10,16 +10,28 @@ import { parseJsx } from './jsx.js';
 import { parseScss } from './scss.js';
 import { parseLess } from './less.js';
 import { parseVue, type VueParsedFile } from './vue.js';
+import { parseAngular, type AngularParsedFile } from './angular.js';
 
 export type ParsedFile =
   | { kind: 'css'; root: Root }
   | { kind: 'jsx'; ast: TSESTree.Program }
-  | VueParsedFile;
+  | VueParsedFile
+  | AngularParsedFile;
 
 export interface ParserEntry {
   id: string;
   /** lowercase extensions without a leading dot, e.g. ['tsx', 'jsx'] */
   extensions: string[];
+  /**
+   * Compound filename suffixes to match ADDITIONALLY to `extensions`, e.g.
+   * ['component.ts', 'component.html'] — checked before falling back to a
+   * plain single-extension match, so a bare .ts/.html file (not ending in
+   * one of these suffixes) is correctly left unregistered. Needed because
+   * `.ts`/`.html` aren't registered as bare extensions at all (that would
+   * scan every TypeScript/HTML file in a project for zero benefit on
+   * non-Angular files) — only the Angular naming convention is.
+   */
+  suffixes?: string[];
   parse(source: string, filePath: string): ParsedFile;
 }
 
@@ -61,13 +73,31 @@ const registry: ParserEntry[] = [
       return parseVue(source, filePath);
     },
   },
+  {
+    id: 'angular',
+    extensions: [],
+    // Not a bare .ts extension — that would scan every TypeScript file in
+    // a project for zero benefit on the (overwhelming majority of) files
+    // that aren't Angular components.
+    suffixes: ['component.ts'],
+    parse(source: string): ParsedFile {
+      return parseAngular(source);
+    },
+  },
 ];
 
 function extOf(filePath: string): string {
   return filePath.split('.').pop()?.toLowerCase() ?? '';
 }
 
+function matchesSuffix(filePath: string, suffix: string): boolean {
+  return filePath.toLowerCase().endsWith(`.${suffix}`);
+}
+
 export function getParserForFile(filePath: string): ParserEntry | undefined {
+  const suffixMatch = registry.find((entry) => entry.suffixes?.some((s) => matchesSuffix(filePath, s)));
+  if (suffixMatch) return suffixMatch;
+
   const ext = extOf(filePath);
   return registry.find((entry) => entry.extensions.includes(ext));
 }
@@ -76,10 +106,14 @@ export function supportedExtensions(): string[] {
   return registry.flatMap((entry) => entry.extensions);
 }
 
+function supportedSuffixes(): string[] {
+  return registry.flatMap((entry) => entry.suffixes ?? []);
+}
+
 // CSS Modules (*.module.css, *.module.scss, *.module.less) already match
 // their base extension above; the explicit module.* clauses are kept for
 // readability/discoverability of the glob pattern and are a no-op for the
 // matched file set.
 export function buildGlob(): string {
-  return `**/*.{${supportedExtensions().join(',')},module.css,module.scss,module.less}`;
+  return `**/*.{${[...supportedExtensions(), ...supportedSuffixes()].join(',')},module.css,module.scss,module.less}`;
 }
