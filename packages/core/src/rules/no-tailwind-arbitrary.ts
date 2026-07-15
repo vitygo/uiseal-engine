@@ -130,6 +130,30 @@ function computeFix(av: TailwindArbitraryValue, ctx: RuleContext): string | null
   return buildFixedClassName(av.className, `${nearest.value}px`);
 }
 
+// A segment's own (line, column) marks where its text STARTS — but a
+// className string literal can itself span multiple physical lines (JSX
+// attribute strings preserve embedded newlines literally, unlike JSX text
+// children), so a class appearing after an embedded '\n' is actually on a
+// later line than the segment's start. Counting newlines up to the class's
+// startIndex within the segment gives its real position.
+function offsetToPosition(
+  text: string,
+  offset: number,
+  base: { line: number; column: number },
+): { line: number; column: number } {
+  let line = base.line;
+  let column = base.column;
+  for (let i = 0; i < offset && i < text.length; i++) {
+    if (text[i] === '\n') {
+      line++;
+      column = 0;
+    } else {
+      column++;
+    }
+  }
+  return { line, column };
+}
+
 function categoryLabel(category: TailwindArbitraryValue['category']): string {
   switch (category) {
     case 'spacing':
@@ -164,6 +188,7 @@ export const noTailwindArbitrary: Rule = {
         const valueDescription =
           av.category === 'color' ? av.rawValue : `${av.designValue.value}px`;
         const fix = computeFix(av, ctx);
+        const pos = offsetToPosition(seg.text, av.startIndex, { line: seg.line, column: seg.column });
 
         ctx.report({
           ruleId: 'no-tailwind-arbitrary',
@@ -171,8 +196,8 @@ export const noTailwindArbitrary: Rule = {
             fix !== null
               ? `Arbitrary Tailwind value '${av.className}' — ${valueDescription} is not in your ${categoryLabel(av.category)}. Did you mean '${fix}'?`
               : `Arbitrary Tailwind value '${av.className}' — ${valueDescription} is not in your ${categoryLabel(av.category)}.`,
-          line: seg.line,
-          column: seg.column,
+          line: pos.line,
+          column: pos.column,
           oldValue: av.className,
           ...(fix !== null ? { fix: { suggested: fix } } : {}),
         });
