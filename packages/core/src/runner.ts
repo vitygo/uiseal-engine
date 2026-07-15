@@ -6,6 +6,7 @@ import type { Violation } from './types.js';
 import type { Rule, RuleContext, Severity } from './rules/types.js';
 import { getParserForFile, type ParsedFile } from './parsers/registry.js';
 import type { VueParsedFile } from './parsers/vue.js';
+import type { AngularParsedFile } from './parsers/angular.js';
 import { objectExpressionToDecls } from './adapters/object-expr-to-decls.js';
 import { walkVueTemplate, extractVueInlineStyleDecls, extractVueClassSegments } from './vue/template-adapter.js';
 import { checkClassStringForArbitraryValues } from './rules/no-tailwind-arbitrary.js';
@@ -104,6 +105,9 @@ export async function analyze({ files, config, rules, projectRoot, licenseState:
       violations.push(...analyzeJsx(filePath, code, parsed.ast, config, rules, usedVarRefs));
     } else if (parsed.kind === 'vue') {
       violations.push(...analyzeVue(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages));
+    } else if (parsed.kind === 'angular') {
+      if (!parsed.isComponent) continue; // not an Angular component — nothing to check
+      violations.push(...analyzeAngular(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages));
     }
   }
 
@@ -305,6 +309,51 @@ function analyzeVue(
       }
     });
   }
+
+  return violations;
+}
+
+// Runs the same CSS rule-walking as analyzeCss() on each inline `styles`
+// entry from a @Component decorator — identical pattern to analyzeVue's
+// style blocks (Commit 2 of the Vue feature): postcss parses each string in
+// isolation starting at line 1, so the offset (the template literal's own
+// start line - 1) is added back to every reported line afterward, on both
+// violations and the TokenDef/SpacingUsage entries fed into post-analysis.
+function analyzeAngular(
+  filePath: string,
+  parsed: AngularParsedFile,
+  config: uisealConfig,
+  rules: Rule[],
+  definedTokens: TokenDef[],
+  usedVarRefs: Set<string>,
+  spacingUsages: SpacingUsage[],
+): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const style of parsed.styles) {
+    const tokensBefore = definedTokens.length;
+    const spacingBefore = spacingUsages.length;
+
+    const styleViolations = analyzeCss(
+      filePath,
+      style.content,
+      style.root,
+      config,
+      rules,
+      definedTokens,
+      usedVarRefs,
+      spacingUsages,
+    );
+
+    for (const v of styleViolations) v.line += style.offset;
+    for (let i = tokensBefore; i < definedTokens.length; i++) definedTokens[i]!.line += style.offset;
+    for (let i = spacingBefore; i < spacingUsages.length; i++) spacingUsages[i]!.line += style.offset;
+
+    violations.push(...styleViolations);
+  }
+
+  // Template analysis ([ngStyle], [style.X], class/[ngClass]) added in
+  // Commit 3.
 
   return violations;
 }
