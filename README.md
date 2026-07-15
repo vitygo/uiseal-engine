@@ -4,7 +4,7 @@ Deterministic design-system linter for human and AI-generated code.
 
 ## What it is
 
-uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, JSX, Vue (.vue), and Angular (.component.ts) files and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
+uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, JSX, Vue (.vue), Angular (.component.ts), and Svelte (.svelte) files and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
 
 ## Install
 
@@ -139,6 +139,21 @@ An Angular component's styles and template can each be either **inline** (in the
 **What's NOT checked:** component class logic (`.ts` code outside the decorator's `styles`/`template`), and any binding that isn't a literal object/array/string/number — `[ngStyle]="computedStyles()"` or `[style.z-index]="5"` (no unit, ambiguous) are skipped rather than guessed at.
 
 **Usage:** no separate flag or setup — `*.component.ts` and `*.component.html` are in the glob `uiseal check`/`uiseal init` already scan; `--fix` rewrites inline `<style>`-equivalent CSS values and template Tailwind classes in the same pass.
+
+## Svelte support
+
+A `.svelte` file's `<style>` block (including `lang="scss"`/`lang="less"`) and markup are both checked, the same way as Vue/Angular — parsed with the real Svelte compiler (`svelte/compiler`), which gives every attribute and directive its own precise, already-absolute position in the file.
+
+**What's checked:**
+- The `<style>` block — parsed with the right CSS dialect for its `lang` attribute, run through the exact same rules as a real `.css`/`.scss`/`.less` file.
+- Static `class="px-4 mt-[13px]"` and `style="padding: 13px"` attributes — same as everywhere else.
+- `style:color="#f00"` / `style:padding="13px"` directives (Svelte's per-property style binding) — the CSS property comes from the directive name, the value from its (static) content; `style:color="var(--primary)"` correctly resolves as a token reference, no violation.
+- `class:mt-[13px]={condition}` directives — the class name is the directive name itself (Svelte parses bracket syntax in a directive name without issue), checked for Tailwind arbitrary values regardless of the bound condition. A directive like `class:active={isActive}` naturally never flags anything, since "active" isn't arbitrary-value syntax.
+- Markup inside `{#if}`/`{#each}` blocks — Svelte's AST holds these as ordinary nested structure, so they're scanned along with everything else, no special-casing needed.
+
+**What's NOT checked:** `<script>` content, and any dynamic binding (`style:color={expr}`, `style={expr}`, `class={expr}`) — only literal string values are statically known.
+
+**Usage:** no separate flag or setup — `.svelte` is in the glob `uiseal check`/`uiseal init` already scan; `--fix` rewrites both `<style>` CSS values and template Tailwind classes/directives in the same pass.
 
 ## Packages
 
