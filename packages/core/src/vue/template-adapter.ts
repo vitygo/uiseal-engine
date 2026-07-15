@@ -5,6 +5,7 @@
 // as a JSX inline style prop, just embedded as raw text in an attribute
 // rather than already being part of the surrounding AST.
 import type { Declaration } from 'postcss';
+import type { TSESTree } from '@typescript-eslint/types';
 import { parseJsx } from '../parsers/jsx.js';
 import { objectExpressionToDecls, makeSyntheticDecl } from '../adapters/object-expr-to-decls.js';
 
@@ -36,11 +37,12 @@ export function walkVueTemplate(node: VueNode, visit: (node: VueNode) => void): 
   }
 }
 
-// Parses a Vue directive expression's raw text (e.g. "{ padding: '13px' }")
-// as a standalone JS expression. Wrapped in parens to force expression
-// (not block-statement) context, matching how `{ ... }` at statement
-// position would otherwise parse as a block.
-function parseObjectLiteralText(exprText: string): ReturnType<typeof parseJsx>['body'][number] | null {
+// Parses a Vue directive expression's raw text (e.g. "{ padding: '13px' }"
+// or "['px-4', cond ? 'mt-[13px]' : 'mt-2']") as a standalone JS expression.
+// Wrapped in parens to force expression (not block-statement) context,
+// matching how `{ ... }` at statement position would otherwise parse as a
+// block.
+function parseExpressionText(exprText: string): ReturnType<typeof parseJsx>['body'][number] | null {
   try {
     const program = parseJsx(`(${exprText})`);
     return program.body[0] ?? null;
@@ -70,7 +72,7 @@ export function extractVueInlineStyleDecls(node: VueNode): Declaration[] {
   for (const prop of props) {
     if (prop.type === NODE_DIRECTIVE && prop.name === 'bind' && prop.arg?.content === 'style' && prop.exp) {
       const pos = { line: prop.exp.loc.start.line, column: prop.exp.loc.start.column };
-      const stmt = parseObjectLiteralText(prop.exp.content);
+      const stmt = parseExpressionText(prop.exp.content);
       if (!stmt || stmt.type !== 'ExpressionStatement') continue;
       const expr = stmt.expression;
       if (expr.type !== 'ObjectExpression') continue; // e.g. :style="computedStyle" — dynamic, skip
@@ -89,4 +91,86 @@ export function extractVueInlineStyleDecls(node: VueNode): Declaration[] {
   }
 
   return decls;
+}
+
+export interface VueClassSegment {
+  text: string;
+  line: number;
+  column: number;
+}
+
+// Only what's statically analyzable is read, mirroring the JSX Tailwind
+// rule's own philosophy (rules/no-tailwind-arbitrary.ts): a string literal
+// is read directly; object keys are read regardless of their value
+// (:class="{ 'rounded-[7px]': isRound }" — the class name is checkable
+// whether or not isRound ends up true, since this is static analysis, not
+// runtime evaluation); array elements are collected recursively, including
+// BOTH branches of a ternary (either could render). Anything else
+// (identifiers, member expressions, function calls) is skipped.
+function extractClassStringsFromExpr(expr: TSESTree.Node): string[] {
+  if (expr.type === 'Literal' && typeof expr.value === 'string') return [expr.value];
+
+  if (expr.type === 'ObjectExpression') {
+    const names: string[] = [];
+    for (const prop of expr.properties) {
+      if (prop.type !== 'Property') continue;
+      const key = prop.key;
+      const name =
+        key.type === 'Literal' && typeof key.value === 'string'
+          ? key.value
+          : key.type === 'Identifier'
+            ? key.name
+            : null;
+      if (name) names.push(name);
+    }
+    return names;
+  }
+
+  if (expr.type === 'ArrayExpression') {
+    const names: string[] = [];
+    for (const el of expr.elements) {
+      if (el) names.push(...extractClassStringsFromExpr(el));
+    }
+    return names;
+  }
+
+  if (expr.type === 'ConditionalExpression') {
+    return [...extractClassStringsFromExpr(expr.consequent), ...extractClassStringsFromExpr(expr.alternate)];
+  }
+
+  return [];
+}
+
+/**
+ * Extracts class="..." / :class="..." text from a single ELEMENT node.
+ * Every class name found in ONE binding shares that binding's own position
+ * (same rationale as extractVueInlineStyleDecls above) — joined with spaces
+ * so the whole thing can be fed through extractArbitraryValues() in one call.
+ */
+export function extractVueClassSegments(node: VueNode): VueClassSegment[] {
+  if (!node || node.type !== NODE_ELEMENT) return [];
+  const props: VueNode[] = node.props ?? [];
+  const segments: VueClassSegment[] = [];
+
+  for (const prop of props) {
+    if (prop.type === NODE_ATTRIBUTE && prop.name === 'class' && prop.value) {
+      segments.push({
+        text: prop.value.content,
+        line: prop.value.loc.start.line,
+        column: prop.value.loc.start.column,
+      });
+    } else if (prop.type === NODE_DIRECTIVE && prop.name === 'bind' && prop.arg?.content === 'class' && prop.exp) {
+      const stmt = parseExpressionText(prop.exp.content);
+      if (!stmt || stmt.type !== 'ExpressionStatement') continue;
+      const names = extractClassStringsFromExpr(stmt.expression);
+      if (names.length === 0) continue;
+      segments.push({
+        text: names.join(' '),
+        line: prop.exp.loc.start.line,
+        column: prop.exp.loc.start.column,
+      });
+    }
+  }
+
+  return segments;
 }

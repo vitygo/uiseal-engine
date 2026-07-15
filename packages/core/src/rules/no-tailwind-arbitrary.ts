@@ -169,6 +169,42 @@ function categoryLabel(category: TailwindArbitraryValue['category']): string {
   }
 }
 
+/**
+ * Runs the detection/fix logic against one class-string segment, reporting
+ * through the given RuleContext. Framework-agnostic — RuleContext only
+ * needs config/helpers/report, nothing JSX-specific — so this is exactly
+ * what a Vue-template walker (or any future non-JSX source) reuses instead
+ * of reimplementing arbitrary-value checking. Only `basePos` is trusted as
+ * absolute; `startIndex` positions within `text` are resolved against it by
+ * counting embedded newlines (see offsetToPosition).
+ */
+export function checkClassStringForArbitraryValues(
+  text: string,
+  basePos: { line: number; column: number },
+  ctx: RuleContext,
+): void {
+  for (const av of extractArbitraryValues(text)) {
+    if (av.category === 'other') continue;
+    if (isAllowed(av, ctx.config)) continue;
+
+    const valueDescription = av.category === 'color' ? av.rawValue : `${av.designValue.value}px`;
+    const fix = computeFix(av, ctx);
+    const pos = offsetToPosition(text, av.startIndex, basePos);
+
+    ctx.report({
+      ruleId: 'no-tailwind-arbitrary',
+      message:
+        fix !== null
+          ? `Arbitrary Tailwind value '${av.className}' — ${valueDescription} is not in your ${categoryLabel(av.category)}. Did you mean '${fix}'?`
+          : `Arbitrary Tailwind value '${av.className}' — ${valueDescription} is not in your ${categoryLabel(av.category)}.`,
+      line: pos.line,
+      column: pos.column,
+      oldValue: av.className,
+      ...(fix !== null ? { fix: { suggested: fix } } : {}),
+    });
+  }
+}
+
 export const noTailwindArbitrary: Rule = {
   id: 'no-tailwind-arbitrary',
   category: 'design',
@@ -181,27 +217,7 @@ export const noTailwindArbitrary: Rule = {
     if (attrName !== 'className' && attrName !== 'class') return;
 
     for (const seg of collectClassSegments(attr)) {
-      for (const av of extractArbitraryValues(seg.text)) {
-        if (av.category === 'other') continue;
-        if (isAllowed(av, ctx.config)) continue;
-
-        const valueDescription =
-          av.category === 'color' ? av.rawValue : `${av.designValue.value}px`;
-        const fix = computeFix(av, ctx);
-        const pos = offsetToPosition(seg.text, av.startIndex, { line: seg.line, column: seg.column });
-
-        ctx.report({
-          ruleId: 'no-tailwind-arbitrary',
-          message:
-            fix !== null
-              ? `Arbitrary Tailwind value '${av.className}' — ${valueDescription} is not in your ${categoryLabel(av.category)}. Did you mean '${fix}'?`
-              : `Arbitrary Tailwind value '${av.className}' — ${valueDescription} is not in your ${categoryLabel(av.category)}.`,
-          line: pos.line,
-          column: pos.column,
-          oldValue: av.className,
-          ...(fix !== null ? { fix: { suggested: fix } } : {}),
-        });
-      }
+      checkClassStringForArbitraryValues(seg.text, { line: seg.line, column: seg.column }, ctx);
     }
   },
 };

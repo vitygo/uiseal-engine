@@ -7,7 +7,8 @@ import type { Rule, RuleContext, Severity } from './rules/types.js';
 import { getParserForFile, type ParsedFile } from './parsers/registry.js';
 import type { VueParsedFile } from './parsers/vue.js';
 import { objectExpressionToDecls } from './adapters/object-expr-to-decls.js';
-import { walkVueTemplate, extractVueInlineStyleDecls } from './vue/template-adapter.js';
+import { walkVueTemplate, extractVueInlineStyleDecls, extractVueClassSegments } from './vue/template-adapter.js';
+import { checkClassStringForArbitraryValues } from './rules/no-tailwind-arbitrary.js';
 import { buildCssIgnoreMap, buildJsxIgnoreMap, applyIgnoreMap } from './ignore.js';
 import { clearEnvInClientCache } from './rules/no-env-in-client.js';
 import {
@@ -271,8 +272,19 @@ function analyzeVue(
   // Template: :style / style="..." inline styles feed CSS rules via the
   // same adapter pattern as JSX's style={{}} — template positions are
   // already absolute (see parsers/vue.ts), so no offset is needed here.
+  //
+  // Tailwind class/:class checking reuses no-tailwind-arbitrary's own
+  // detection+fix logic directly (checkClassStringForArbitraryValues) rather
+  // than going through the Rule/checkJsxNode dispatch — Vue template nodes
+  // aren't TSESTree, so there's no checkJsxNode hook to call here (per the
+  // architecture decision: Vue templates get their own walker). It only
+  // runs when the caller actually included the rule, so `rules: [x]`
+  // continues to mean exactly what it says for Vue files too.
   if (parsed.template) {
     const cssRules = rules.filter((r) => r.checkCssDeclaration !== undefined);
+    const tailwindRule = rules.find((r) => r.id === 'no-tailwind-arbitrary');
+    const tailwindSeverity = tailwindRule ? effectiveSeverity(tailwindRule, config) : 'off';
+
     walkVueTemplate(parsed.template.ast, (node) => {
       const inlineDecls = extractVueInlineStyleDecls(node);
       for (const decl of inlineDecls) {
@@ -283,6 +295,13 @@ function analyzeVue(
           rule.checkCssDeclaration!(decl, ctx);
         }
         for (const name of extractVarRefs(decl.value)) usedVarRefs.add(name);
+      }
+
+      if (tailwindSeverity !== 'off') {
+        const ctx = makeContext(filePath, config, violations, tailwindSeverity);
+        for (const seg of extractVueClassSegments(node)) {
+          checkClassStringForArbitraryValues(seg.text, { line: seg.line, column: seg.column }, ctx);
+        }
       }
     });
   }
