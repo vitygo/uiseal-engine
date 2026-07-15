@@ -23,6 +23,7 @@ uiseal init     # generate uiseal.config.json — auto-detects Tailwind/CSS
 uiseal init --from tailwind  # explicitly generate from tailwind.config.*
 uiseal init --from css-vars  # explicitly generate from a CSS/SCSS variables file
 uiseal init --from code      # explicitly scan source code (today's behavior)
+uiseal drift    # compare the LIVE token source against the LIVE code — see below
 ```
 
 ## Rules
@@ -90,6 +91,58 @@ Three seams keep `@uiseal/core` from growing copy-pasted dispatch logic as it ad
 `uiseal init` runs every registered source's `detect()` and uses the highest-confidence match automatically; if more than one real source is found, it asks which one is the source of truth. Pass `--from <tailwind|css-vars|code>` to skip detection and pick one explicitly.
 
 Adding a new source (e.g. Style Dictionary) is a one-file task: implement `TokenSource` in a new file under `packages/core/src/sources/`, then add it to the array in `sources/registry.ts`. `TokenSource`, `SourceTokens`, `DetectResult`, and `detectSources()`/`getAllSources()`/`getSourceById()` are all exported from `@uiseal/core`.
+
+## Drift detection
+
+`uiseal check` compares your code against `uiseal.config.json` — a **snapshot** taken whenever `init` last ran. Over months of work (especially with AI-generated code), two things happen that `check` alone can't see: your actual token source moves on (a designer adds colors to `tailwind.config.js`) without anyone re-running `init`, and the codebase quietly accumulates off-token values that never got flagged because nobody happened to touch that file when a rule existed to catch it.
+
+`uiseal drift` re-reads the **live** token source right now — not the config snapshot — and compares it against the **live** code right now:
+
+```sh
+uiseal drift                        # auto-detect the source, print a report
+uiseal drift --source tailwind      # compare against tailwind.config.js directly
+uiseal drift --json                 # structured output for CI/scripting
+uiseal drift --verbose               # show every drifted value, not just the top ones
+```
+
+Example output:
+
+```
+╭─────────────────────────────────────────╮
+│  DESIGN SYSTEM DRIFT REPORT            │
+│  Source: CSS variables (variables.css) │
+│  Scanned: 3 files, 7 values extracted  │
+╰─────────────────────────────────────────╯
+
+DRIFT: 60.0%  (3 off-token values / 5 unique values)
+
+┌─────────────┬────────┬─────────┬───────────┬────────┐
+│ Category    │ Tokens │ In Code │ Drifted   │ Unused │
+├─────────────┼────────┼─────────┼───────────┼────────┤
+│ Colors      │      3 │      2  │     1 ●●● │      2 │
+│ Spacing     │      3 │      2  │     1 ●●● │      2 │
+...
+
+TOP DRIFTED VALUES (most occurrences first):
+  #1a73e8  (not in tokens)   2 occurrences in 1 file
+    → nearest: color-primary (#3b82f6)
+  13px  (not in spacing)   2 occurrences in 1 file
+    → nearest: 16px  Δ3px
+
+UNUSED TOKENS (defined in source, never used in code):
+  colors: color-danger, color-warning
+  spacing: 8px, 24px
+```
+
+`drift` catches two distinct things: **drifted values** (in code, not in the live source — an off-token color or spacing value, possibly with a nearest-token suggestion if it's close) and **unused tokens** (defined in the live source, never referenced anywhere in the code — a sign the design system and the codebase have grown apart). The headline percentage — `driftedValues / uniqueValuesInCode` — is the number worth tracking over time.
+
+**CI usage:** `uiseal drift --json` exits `1` when drift is at or above 10% (hardcoded for now), so it's usable as a gate on its own; the JSON adds a flattened, category-tagged `driftedValues` array specifically for scripting:
+
+```sh
+uiseal drift --json | jq '.summary.driftPercentage'
+```
+
+**Known limitation:** drift's code-value collection covers CSS declarations and inline styles (real `.css`/`.scss`/`.less` files, and JSX/Vue/Angular/Svelte inline `style`/`style:`/`:style`/`[ngStyle]` bindings) — Tailwind utility classes aren't scanned for drift purposes (matching the scope of the underlying code extractor). A codebase that's 100% Tailwind classes with no inline styles or stylesheets will show 0 unique values in code, not an error.
 
 ## Tailwind support
 
