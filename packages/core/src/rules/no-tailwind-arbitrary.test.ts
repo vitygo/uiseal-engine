@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { analyze } from '../runner.js';
+import { applyFixes } from '../fixer/apply-fixes.js';
 import { noTailwindArbitrary } from './no-tailwind-arbitrary.js';
 import type { uisealConfig } from '../config/schema.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const baseConfig: uisealConfig = {
   tokens: {
@@ -107,5 +111,76 @@ describe('no-tailwind-arbitrary — className AST forms', () => {
   it('also checks a plain "class" attribute name', async () => {
     const vs = await run(`export const C = () => <div class="mt-[13px]" />;`);
     expect(vs).toHaveLength(1);
+  });
+});
+
+describe('no-tailwind-arbitrary — fix suggestions (Approach A: nearest raw value)', () => {
+  it('suggests the nearest on-scale spacing value, rebuilt into the bracket', async () => {
+    const vs = await run(`export const C = () => <div className="mt-[13px]" />;`);
+    expect(vs[0]!.oldValue).toBe('mt-[13px]');
+    expect(vs[0]!.fix?.suggested).toBe('mt-[12px]');
+    expect(vs[0]!.message).toContain("Did you mean 'mt-[12px]'");
+  });
+
+  it('suggests the nearest on-scale radius value', async () => {
+    const vs = await run(`export const C = () => <div className="rounded-[7px]" />;`);
+    expect(vs[0]!.fix?.suggested).toBe('rounded-[8px]');
+  });
+
+  it('suggests the nearest on-scale font-size value', async () => {
+    const vs = await run(`export const C = () => <div className="text-[15px]" />;`);
+    expect(vs[0]!.fix?.suggested).toBe('text-[14px]');
+  });
+
+  it('suggests the nearest color token hex, rebuilt into the bracket', async () => {
+    // #3c82f7 is one bit off from the blue-500 token (#3b82f6) — well within
+    // the perceptual-distance threshold findClosestColorToken uses.
+    const vs = await run(`export const C = () => <div className="bg-[#3c82f7]" />;`);
+    expect(vs[0]!.fix?.suggested).toBe('bg-[#3b82f6]');
+  });
+
+  it('has no fix when the value is too far from anything in the scale', async () => {
+    const vs = await run(`export const C = () => <div className="mt-[99px]" />;`);
+    expect(vs).toHaveLength(1);
+    expect(vs[0]!.fix).toBeUndefined();
+    expect(vs[0]!.message).not.toContain('Did you mean');
+  });
+
+  it('preserves variant/important/negative prefixes outside the brackets when rebuilding the fix', async () => {
+    const vs = await run(`export const C = () => <div className="md:hover:!mt-[13px]" />;`);
+    expect(vs[0]!.oldValue).toBe('md:hover:!mt-[13px]');
+    expect(vs[0]!.fix?.suggested).toBe('md:hover:!mt-[12px]');
+  });
+
+  it('rebuilds an arbitrary-property fix, keeping "property:" intact', async () => {
+    const vs = await run(`export const C = () => <div className="[padding:13px]" />;`);
+    expect(vs[0]!.fix?.suggested).toBe('[padding:12px]');
+  });
+});
+
+describe('no-tailwind-arbitrary — applyFixes works on a substring within className', () => {
+  it('replaces only the arbitrary class, leaving the rest of className untouched', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'uiseal-tw-fix-'));
+    try {
+      const file = path.join(tmpDir, 'Card.tsx');
+      fs.writeFileSync(
+        file,
+        'export const C = () => <div className="mt-4 mt-[13px] text-blue-500" />;\n',
+      );
+
+      const { violations } = await analyze({
+        files: new Map([[file, fs.readFileSync(file, 'utf8')]]),
+        config: baseConfig,
+        rules: [noTailwindArbitrary],
+      });
+
+      const results = applyFixes(violations, { dryRun: false });
+      expect(results[0]!.applied).toHaveLength(1);
+
+      const fixed = fs.readFileSync(file, 'utf8');
+      expect(fixed).toContain('className="mt-4 mt-[12px] text-blue-500"');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

@@ -2,6 +2,13 @@ import type { TSESTree } from '@typescript-eslint/types';
 import type { Rule, RuleContext } from './types.js';
 import { extractArbitraryValues } from '../tailwind/parse-classes.js';
 import type { TailwindArbitraryValue } from '../tailwind/parse-classes.js';
+import { findNearestNumeric } from '../values/nearest-token.js';
+
+// Same thresholds the corresponding non-Tailwind rules use, for consistency:
+// spacing-near-token.ts (4), no-arbitrary-font-size.ts / no-arbitrary-radius.ts (2).
+const SPACING_THRESHOLD = 4;
+const FONT_SIZE_THRESHOLD = 2;
+const RADIUS_THRESHOLD = 2;
 
 interface ClassSegment {
   text: string;
@@ -67,6 +74,62 @@ function isAllowed(av: TailwindArbitraryValue, config: RuleContext['config']): b
   }
 }
 
+// Approach A (see report / commit message): suggest the nearest ON-TOKEN
+// raw value, substituted back into the class's own bracket syntax, rather
+// than resolving to the Tailwind utility name that value would correspond
+// to (e.g. px-3) — that reverse mapping needs the Tailwind config loaded at
+// check-time, not just at init-time (a token source only runs at init).
+// This still fixes the actual problem (the value becomes on-scale) even
+// though the result (px-[12px]) is still written as an arbitrary class.
+//
+// Replaces only the VALUE portion inside the brackets, so it works for both
+// the utility form (px-[13px] -> px-[12px]) and the arbitrary-property form
+// ([padding:13px] -> [padding:12px]) — variant/important/negative-sign
+// prefixes outside the brackets are left untouched either way.
+function buildFixedClassName(className: string, newInnerValue: string): string | null {
+  const bracketMatch = className.match(/\[([^\]]*)\]/);
+  if (!bracketMatch || bracketMatch.index === undefined) return null;
+
+  const inner = bracketMatch[1] ?? '';
+  const colonIdx = inner.indexOf(':');
+  const newInner = colonIdx === -1 ? newInnerValue : `${inner.slice(0, colonIdx + 1)}${newInnerValue}`;
+
+  const start = bracketMatch.index;
+  const end = start + bracketMatch[0].length;
+  return `${className.slice(0, start)}[${newInner}]${className.slice(end)}`;
+}
+
+function computeFix(av: TailwindArbitraryValue, ctx: RuleContext): string | null {
+  if (av.category === 'color') {
+    const closest = ctx.helpers.findClosestColorToken(av.rawValue, ctx.config);
+    if (closest === null) return null;
+    const hex = ctx.config.tokens.colors[closest];
+    if (!hex) return null;
+    return buildFixedClassName(av.className, hex);
+  }
+
+  const value = av.designValue.value;
+  if (value === null) return null;
+
+  const scale =
+    av.category === 'spacing'
+      ? ctx.config.tokens.spacing
+      : av.category === 'fontSize'
+        ? ctx.config.tokens.fontSizes
+        : av.category === 'radius'
+          ? ctx.config.tokens.radii
+          : null;
+  if (scale === null) return null;
+
+  const threshold =
+    av.category === 'spacing' ? SPACING_THRESHOLD : av.category === 'fontSize' ? FONT_SIZE_THRESHOLD : RADIUS_THRESHOLD;
+
+  const nearest = findNearestNumeric(value, scale, { threshold });
+  if (!nearest || !nearest.withinThreshold) return null;
+
+  return buildFixedClassName(av.className, `${nearest.value}px`);
+}
+
 function categoryLabel(category: TailwindArbitraryValue['category']): string {
   switch (category) {
     case 'spacing':
@@ -100,12 +163,18 @@ export const noTailwindArbitrary: Rule = {
 
         const valueDescription =
           av.category === 'color' ? av.rawValue : `${av.designValue.value}px`;
+        const fix = computeFix(av, ctx);
 
         ctx.report({
           ruleId: 'no-tailwind-arbitrary',
-          message: `Arbitrary Tailwind value '${av.className}' — ${valueDescription} is not in your ${categoryLabel(av.category)}.`,
+          message:
+            fix !== null
+              ? `Arbitrary Tailwind value '${av.className}' — ${valueDescription} is not in your ${categoryLabel(av.category)}. Did you mean '${fix}'?`
+              : `Arbitrary Tailwind value '${av.className}' — ${valueDescription} is not in your ${categoryLabel(av.category)}.`,
           line: seg.line,
           column: seg.column,
+          oldValue: av.className,
+          ...(fix !== null ? { fix: { suggested: fix } } : {}),
         });
       }
     }
