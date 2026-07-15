@@ -51,6 +51,7 @@ const FREE_RULE_IDS = new Set([
   'no-unauthorized-font-family',
   'no-arbitrary-radius',
   'enforce-contrast',
+  'no-tailwind-arbitrary',
   // quality exception
   'no-inline-styles',
 ]);

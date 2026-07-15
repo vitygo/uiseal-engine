@@ -19,6 +19,7 @@ export { noMagicNumbers } from './no-magic-numbers.js';
 export { noOversizedComponent } from './no-oversized-component.js';
 export { noConsoleLog } from './no-console-log.js';
 export { noInlineStyles } from './no-inline-styles.js';
+export { noTailwindArbitrary } from './no-tailwind-arbitrary.js';
 
 import { noHardcodedColor } from './no-hardcoded-color.js';
 import { noArbitrarySpacing } from './no-arbitrary-spacing.js';
@@ -41,6 +42,7 @@ import { noMagicNumbers } from './no-magic-numbers.js';
 import { noOversizedComponent } from './no-oversized-component.js';
 import { noConsoleLog } from './no-console-log.js';
 import { noInlineStyles } from './no-inline-styles.js';
+import { noTailwindArbitrary } from './no-tailwind-arbitrary.js';
 
 export const securityRules = [
   noXssDangerous,
@@ -70,6 +72,7 @@ export const allRules = [
   noMissingFormLabel,
   noPositiveTabindex,
   noAutofocus,
+  noTailwindArbitrary,
   ...securityRules,
   ...qualityRules,
 ];

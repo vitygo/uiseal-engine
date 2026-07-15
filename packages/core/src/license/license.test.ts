@@ -437,8 +437,8 @@ describe('getRulesForPlan', () => {
     expect(rules).toHaveLength(allRules.length);
   });
 
-  it('free plan returns 7 rules (6 design + no-inline-styles)', () => {
+  it('free plan returns 8 rules (7 design + no-inline-styles)', () => {
     const rules = getRulesForPlan('free', {});
-    expect(rules).toHaveLength(7);
+    expect(rules).toHaveLength(8);
   });
 });
