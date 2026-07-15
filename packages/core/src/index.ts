@@ -64,3 +64,5 @@ export type {
   DriftFileRef,
   AnalyzeDriftOptions,
 } from './drift/analyze-drift.js';
+export { formatDriftReport } from './drift/format-drift.js';
+export type { FormatDriftOptions } from './drift/format-drift.js';

@@ -40,6 +40,9 @@ export interface DriftReport {
   source: { id: string; file?: string };
   timestamp: string;
   summary: {
+    filesScanned: number;
+    /** total value OCCURRENCES across the codebase (a value used 5 times counts 5x), not unique values — the headline "N values extracted" figure */
+    totalValueOccurrences: number;
     totalTokensInSource: number;
     totalUniqueValuesInCode: number;
     totalDriftedValues: number;
@@ -222,10 +225,21 @@ export async function analyzeDrift(options: AnalyzeDriftOptions): Promise<DriftR
   const driftPercentage =
     totalUniqueValuesInCode === 0 ? 0 : (totalDriftedValues / totalUniqueValuesInCode) * 100;
 
+  const sumOccurrences = (map: Map<unknown, DriftLocation[]>): number =>
+    [...map.values()].reduce((sum, locs) => sum + locs.length, 0);
+  const totalValueOccurrences =
+    sumOccurrences(codeValues.colors) +
+    sumOccurrences(codeValues.spacing) +
+    sumOccurrences(codeValues.fontSizes) +
+    sumOccurrences(codeValues.radii) +
+    sumOccurrences(codeValues.fontFamilies);
+
   return {
     source: { id, file },
     timestamp: new Date().toISOString(),
     summary: {
+      filesScanned: files.size,
+      totalValueOccurrences,
       totalTokensInSource,
       totalUniqueValuesInCode,
       totalDriftedValues,
