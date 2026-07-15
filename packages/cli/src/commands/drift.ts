@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import path from 'node:path';
-import { analyzeDrift, formatDriftReport } from '@uiseal/core';
+import { analyzeDrift, formatDriftReport, formatDriftJson } from '@uiseal/core';
 
 // Exit 1 once drift crosses this — hardcoded for v1, per the task; a
 // configurable threshold is a natural follow-up once real usage shows what
@@ -34,7 +34,7 @@ export const driftCommand = new Command('drift')
     }
 
     if (opts.json) {
-      process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+      process.stdout.write(formatDriftJson(report) + '\n');
     } else {
       process.stdout.write(formatDriftReport(report, { verbose: opts.verbose }) + '\n');
     }

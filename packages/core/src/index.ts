@@ -66,3 +66,5 @@ export type {
 } from './drift/analyze-drift.js';
 export { formatDriftReport } from './drift/format-drift.js';
 export type { FormatDriftOptions } from './drift/format-drift.js';
+export { toDriftJson, formatDriftJson } from './drift/format-drift-json.js';
+export type { DriftJson, DriftJsonValue, DriftCategoryKey } from './drift/format-drift-json.js';
