@@ -4,7 +4,7 @@ Deterministic design-system linter for human and AI-generated code.
 
 ## What it is
 
-uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, JSX, and Vue (.vue) files and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
+uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, JSX, Vue (.vue), and Angular (.component.ts) files and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
 
 ## Install
 
@@ -122,6 +122,23 @@ A `.vue` Single File Component has two analyzable parts, both checked: the `<sty
 **What's NOT checked:** anything inside `<script>`/`<script setup>` — component logic isn't analyzed for style-related values. Dynamic bindings (`:style="computedStyle"`, `:class="dynamicClasses"`) are skipped — only literal object/array/string forms are statically parseable.
 
 **Usage:** no separate flag or setup — `.vue` is in the glob `uiseal check`/`uiseal init` already scan; `--fix` rewrites both `<style>` CSS values and `<template>` Tailwind classes in the same pass.
+
+## Angular support
+
+An Angular component's styles and template can each be either **inline** (in the `@Component({...})` decorator) or **external** (`styleUrls`/`templateUrl`, pointing at separate files) — uiseal checks both forms the same way. Only `*.component.ts` is scanned as an Angular component (the standard Angular CLI naming convention) — a plain `.ts` file is never parsed at all, so this adds zero scan cost to the rest of a TypeScript codebase.
+
+**What's checked:**
+- Inline `styles: [\`...\`]` entries in the decorator — each parsed as CSS and run through the exact same rules as a real `.css` file.
+- External `.component.scss`/`.component.css`/`.component.less` — already covered by uiseal's existing CSS/SCSS/LESS support; Angular doesn't need to do anything extra for these, they're picked up like any other stylesheet.
+- An external `.component.html` template, or an inline `template: \`...\`` string — both analyzed for:
+  - Static `class="px-4 mt-[13px]"` and `style="padding: 13px"` attributes.
+  - `[ngStyle]="{ 'color': '#f00' }"` object bindings (same handling as Vue's `:style`).
+  - `[style.padding.px]="13"` individual property bindings — the property name and unit come from the binding name itself, the value from the bound expression (a bare number, or a quoted string for something like a color).
+  - `[ngClass]="{ 'mt-[13px]': isActive }"` and `[class]="'...'"` — same Tailwind arbitrary-value detection as everywhere else, object keys checked regardless of the condition's value.
+
+**What's NOT checked:** component class logic (`.ts` code outside the decorator's `styles`/`template`), and any binding that isn't a literal object/array/string/number — `[ngStyle]="computedStyles()"` or `[style.z-index]="5"` (no unit, ambiguous) are skipped rather than guessed at.
+
+**Usage:** no separate flag or setup — `*.component.ts` and `*.component.html` are in the glob `uiseal check`/`uiseal init` already scan; `--fix` rewrites inline `<style>`-equivalent CSS values and template Tailwind classes in the same pass.
 
 ## Packages
 
