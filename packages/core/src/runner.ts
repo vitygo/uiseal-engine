@@ -5,6 +5,7 @@ import type { uisealConfig } from './config/schema.js';
 import type { Violation } from './types.js';
 import type { Rule, RuleContext, Severity } from './rules/types.js';
 import { getParserForFile, type ParsedFile } from './parsers/registry.js';
+import type { VueParsedFile } from './parsers/vue.js';
 import { buildCssIgnoreMap, buildJsxIgnoreMap, applyIgnoreMap } from './ignore.js';
 import { clearEnvInClientCache } from './rules/no-env-in-client.js';
 import {
@@ -98,6 +99,8 @@ export async function analyze({ files, config, rules, projectRoot, licenseState:
       violations.push(...analyzeCss(filePath, code, parsed.root, config, rules, definedTokens, usedVarRefs, spacingUsages));
     } else if (parsed.kind === 'jsx') {
       violations.push(...analyzeJsx(filePath, code, parsed.ast, config, rules, usedVarRefs));
+    } else if (parsed.kind === 'vue') {
+      violations.push(...analyzeVue(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages));
     }
   }
 
@@ -220,6 +223,50 @@ function analyzeCss(
   spacingUsages.push(...collectNonAllowedSpacingUsages(filePath, root, config));
 
   return applyIgnoreMap(violations, ignoreMap);
+}
+
+// Runs the exact same CSS rule-walking as analyzeCss() on each <style>
+// block's already-parsed Root — reused, not reimplemented, so ignore-comment
+// handling (buildCssIgnoreMap), checkCssComment/checkCssAtRule support, and
+// post-analysis collection (dead-token defs, spacing usages) all come along
+// for free. postcss parses each block's content in isolation starting at
+// line 1, so every line number analyzeCss produces — on violations AND on
+// the TokenDef/SpacingUsage entries it feeds into post-analysis — is offset
+// back to the true .vue file line afterward.
+function analyzeVue(
+  filePath: string,
+  parsed: VueParsedFile,
+  config: uisealConfig,
+  rules: Rule[],
+  definedTokens: TokenDef[],
+  usedVarRefs: Set<string>,
+  spacingUsages: SpacingUsage[],
+): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const style of parsed.styles) {
+    const tokensBefore = definedTokens.length;
+    const spacingBefore = spacingUsages.length;
+
+    const styleViolations = analyzeCss(
+      filePath,
+      style.content,
+      style.root,
+      config,
+      rules,
+      definedTokens,
+      usedVarRefs,
+      spacingUsages,
+    );
+
+    for (const v of styleViolations) v.line += style.offset;
+    for (let i = tokensBefore; i < definedTokens.length; i++) definedTokens[i]!.line += style.offset;
+    for (let i = spacingBefore; i < spacingUsages.length; i++) spacingUsages[i]!.line += style.offset;
+
+    violations.push(...styleViolations);
+  }
+
+  return violations;
 }
 
 function analyzeJsx(
