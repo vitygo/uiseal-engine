@@ -42,6 +42,7 @@ uiseal init --from code      # explicitly scan source code (today's behavior)
 | `no-autofocus` | accessibility | `autofocus` attribute that disrupts focus order |
 | `no-div-button` | accessibility | `<div>` used as an interactive button |
 | `variant-sprawl` | components | Component variants that fall outside the allowed set |
+| `no-tailwind-arbitrary` | design | Tailwind arbitrary-value classes (`px-[13px]`) off the token scale — see [Tailwind support](#tailwind-support) |
 
 ## TUI
 
@@ -89,6 +90,25 @@ Three seams keep `@uiseal/core` from growing copy-pasted dispatch logic as it ad
 `uiseal init` runs every registered source's `detect()` and uses the highest-confidence match automatically; if more than one real source is found, it asks which one is the source of truth. Pass `--from <tailwind|css-vars|code>` to skip detection and pick one explicitly.
 
 Adding a new source (e.g. Style Dictionary) is a one-file task: implement `TokenSource` in a new file under `packages/core/src/sources/`, then add it to the array in `sources/registry.ts`. `TokenSource`, `SourceTokens`, `DetectResult`, and `detectSources()`/`getAllSources()`/`getSourceById()` are all exported from `@uiseal/core`.
+
+## Tailwind support
+
+A Tailwind class like `px-4` or `text-blue-500` is a *reference* to whatever's in your Tailwind config — it's valid by definition, not something uiseal can second-guess without re-implementing Tailwind's own theme resolution. What uiseal checks instead is Tailwind's arbitrary-value escape hatch: `px-[13px]`, `text-[#ff5733]`, `rounded-[7px]`, `[padding:13px]` — literal values written inline, bypassing the design system entirely. That's the pattern this catches, and it's a common "AI smell": a generated component that's 95% standard utilities with one arbitrary value slipped in.
+
+**What's checked:** arbitrary-value classes in `className`/`class` — spacing (`p*`/`m*`/`gap`/`inset`/`w`/`h`/...), color (any prefix whose bracket value parses as a color), font-size (`text-[15px]`), and radius (`rounded-[...]`) — flagged when the value isn't an exact match in your `uiseal.config.json` token scale. A value that happens to exactly match a token (`bg-[#3b82f6]` when `#3b82f6` is configured) is skipped: it's correct, just unnecessarily verbose, and that's a style call, not a token violation.
+
+**What's NOT checked:** every standard utility class, ever — `px-4`, `text-blue-500`, `mt-2`, `rounded-lg` are never flagged, regardless of your config. Also `other`-category arbitrary values (`leading-[1.2]`, `grid-cols-[1fr_500px]`, ...) — nothing to check them against yet — and dynamic values (`w-[calc(100%-20px)]`, `text-[var(--x)]`), which aren't literal.
+
+**Usage:**
+```sh
+uiseal init --from tailwind   # generate uiseal.config.json from tailwind.config.*
+uiseal check                  # no-tailwind-arbitrary runs alongside every other rule
+uiseal check --fix            # px-[13px] -> px-[12px] when a close token exists
+```
+
+**Known limitations:**
+- Only what's statically analyzable in `className` is read: a plain string, a template literal's static parts (`` `px-4 ${dynamic}` `` — the `${dynamic}` part is skipped, not evaluated), string-literal arguments to any call expression (covers `cn()`/`clsx()`/`classnames()` without hardcoding those names — `cn('px-4', condition && 'mt-2')` skips the conditional argument), and `+` string concatenation. A bare variable (`className={classes}`) or anything else dynamic is skipped entirely — no false positives, but no coverage either.
+- Fix suggestions substitute the nearest on-token *raw value* back into the same bracket syntax (`px-[13px]` → `px-[12px]`) rather than resolving to the Tailwind utility name that value would correspond to (`px-3`) — the reverse mapping needs your Tailwind config loaded at check-time, not just at init-time. Noted as a future improvement.
 
 ## Packages
 
