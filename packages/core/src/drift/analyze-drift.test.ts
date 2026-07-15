@@ -103,6 +103,59 @@ describe('analyzeDrift — CSS vars source', () => {
     expect(report.summary.driftPercentage).toBe(0);
     expect(Number.isNaN(report.summary.driftPercentage)).toBe(false);
   });
+
+  it('handles a source detected but with no tokens at all (empty theme)', async () => {
+    // A variables.css with fewer than the css-vars source's own MIN_VARS
+    // threshold wouldn't be "detected" at all; write one that qualifies but
+    // whose values don't fall into any of the checked categories, so every
+    // category's tokensInSource ends up 0.
+    fs.writeFileSync(
+      tmpDir + '/variables.css',
+      ':root { --mystery-a: 12px; --mystery-b: 20px; --mystery-c: 5px; }\n',
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'app.tsx'),
+      "export const A = () => <div style={{ color: '#1a73e8', padding: '13px' }} />;",
+    );
+
+    const report = await analyzeDrift({ cwd: tmpDir, sourceId: 'css-vars' });
+
+    expect(report.summary.totalTokensInSource).toBe(0);
+    // Nothing in source to match against -> both code values count as drifted.
+    expect(report.summary.totalDriftedValues).toBe(report.summary.totalUniqueValuesInCode);
+    expect(Number.isNaN(report.summary.driftPercentage)).toBe(false);
+  });
+});
+
+describe('analyzeDrift — Tailwind source', () => {
+  it('computes drift against a live tailwind.config.js (re-read at drift time, not from a cached config)', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'tailwind.config.js'),
+      `module.exports = {
+        theme: {
+          colors: { primary: '#3b82f6' },
+          spacing: { 4: '1rem', 8: '2rem' },
+        },
+      };`,
+    );
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'Button.tsx'),
+      "export const Button = () => <button style={{ color: '#3b82f6', padding: '16px' }} />;", // on-token
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'Alert.tsx'),
+      "export const Alert = () => <div style={{ color: '#1a73e8', padding: '13px' }} />;", // off-token
+    );
+
+    const report = await analyzeDrift({ cwd: tmpDir, sourceId: 'tailwind' });
+
+    expect(report.source.id).toBe('tailwind');
+    expect(report.categories.colors.tokensInSource).toBe(1);
+    expect(report.categories.colors.driftedValues.map((v) => v.value)).toEqual(['#1a73e8']);
+    expect(report.categories.spacing.tokensInSource).toBe(2);
+    expect(report.categories.spacing.driftedValues[0]!.nearestToken).toBe('16px');
+  });
 });
 
 describe('analyzeDrift — error handling', () => {
