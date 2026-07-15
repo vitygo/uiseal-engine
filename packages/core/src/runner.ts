@@ -6,6 +6,8 @@ import type { Violation } from './types.js';
 import type { Rule, RuleContext, Severity } from './rules/types.js';
 import { getParserForFile, type ParsedFile } from './parsers/registry.js';
 import type { VueParsedFile } from './parsers/vue.js';
+import { objectExpressionToDecls } from './adapters/object-expr-to-decls.js';
+import { walkVueTemplate, extractVueInlineStyleDecls } from './vue/template-adapter.js';
 import { buildCssIgnoreMap, buildJsxIgnoreMap, applyIgnoreMap } from './ignore.js';
 import { clearEnvInClientCache } from './rules/no-env-in-client.js';
 import {
@@ -266,6 +268,25 @@ function analyzeVue(
     violations.push(...styleViolations);
   }
 
+  // Template: :style / style="..." inline styles feed CSS rules via the
+  // same adapter pattern as JSX's style={{}} — template positions are
+  // already absolute (see parsers/vue.ts), so no offset is needed here.
+  if (parsed.template) {
+    const cssRules = rules.filter((r) => r.checkCssDeclaration !== undefined);
+    walkVueTemplate(parsed.template.ast, (node) => {
+      const inlineDecls = extractVueInlineStyleDecls(node);
+      for (const decl of inlineDecls) {
+        for (const rule of cssRules) {
+          const sev = effectiveSeverity(rule, config);
+          if (sev === 'off') continue;
+          const ctx = makeContext(filePath, config, violations, sev);
+          rule.checkCssDeclaration!(decl, ctx);
+        }
+        for (const name of extractVarRefs(decl.value)) usedVarRefs.add(name);
+      }
+    });
+  }
+
   return violations;
 }
 
@@ -339,47 +360,5 @@ function extractInlineStyleDecls(node: TSESTree.Node): Declaration[] {
   const expr = attr.value.expression;
   if (expr.type !== 'ObjectExpression') return [];
 
-  const decls: Declaration[] = [];
-  for (const prop of expr.properties) {
-    if (prop.type !== 'Property') continue;
-    const p = prop as TSESTree.Property;
-    const keyNode = p.key;
-    const valueNode = p.value;
-
-    const propName =
-      keyNode.type === 'Identifier'
-        ? keyNode.name
-        : keyNode.type === 'Literal' && typeof keyNode.value === 'string'
-          ? keyNode.value
-          : null;
-    if (!propName) continue;
-
-    const propValue =
-      valueNode.type === 'Literal' && valueNode.value !== null
-        ? String(valueNode.value)
-        : valueNode.type === 'TemplateLiteral' && valueNode.quasis.length === 1
-          ? valueNode.quasis[0]!.value.cooked ?? ''
-          : null;
-    if (propValue === null) continue;
-
-    // camelCase → kebab-case for CSS property name.
-    const cssProperty = propName.replace(/([A-Z])/g, '-$1').toLowerCase();
-
-    // Build a minimal postcss Declaration-compatible object.
-    const loc = p.loc ?? { start: { line: 1, column: 0 }, end: { line: 1, column: 0 } };
-    const decl = {
-      type: 'decl',
-      prop: cssProperty,
-      value: propValue,
-      important: false,
-      source: {
-        start: { line: loc.start.line, column: loc.start.column, offset: 0 },
-        end: { line: loc.end.line, column: loc.end.column, offset: 0 },
-      },
-    } as unknown as Declaration;
-
-    decls.push(decl);
-  }
-
-  return decls;
+  return objectExpressionToDecls(expr);
 }
