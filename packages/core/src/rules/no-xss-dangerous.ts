@@ -19,6 +19,10 @@ export const noXssDangerous: Rule = {
   id: 'no-xss-dangerous',
   category: 'security',
   defaultSeverity: 'error',
+  shortDescription: 'Disallow unsanitized dangerouslySetInnerHTML',
+  fullDescription:
+    'Flags dangerouslySetInnerHTML usage whose value is not wrapped in a recognized sanitizer call. Rendering unsanitized HTML from any source that could include user input is a cross-site scripting (XSS) vulnerability.',
+  helpUri: 'https://uiseal.io/docs/rules/no-xss-dangerous',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'JSXAttribute') return;

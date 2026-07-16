@@ -209,6 +209,10 @@ export const noTailwindArbitrary: Rule = {
   id: 'no-tailwind-arbitrary',
   category: 'design',
   defaultSeverity: 'warning',
+  shortDescription: 'Disallow Tailwind arbitrary values outside the token scale',
+  fullDescription:
+    "Flags Tailwind's square-bracket arbitrary-value syntax (e.g. px-[13px], text-[#ff5733]) when the value is not an exact match in the configured token scale; standard utility classes are never flagged. Catches the same design drift as no-hardcoded-color and no-arbitrary-spacing, but for Tailwind's escape hatch specifically.",
+  helpUri: 'https://uiseal.io/docs/rules/no-tailwind-arbitrary',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'JSXAttribute') return;

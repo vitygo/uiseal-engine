@@ -54,6 +54,10 @@ export const noHardcodedColor: Rule = {
   id: 'no-hardcoded-color',
   category: 'design',
   defaultSeverity: 'error',
+  shortDescription: 'Disallow hardcoded color values outside the design token scale',
+  fullDescription:
+    'Flags literal hex/rgb/hsl color values in CSS declarations and JSX style props instead of a design token reference. Catches AI- and human-written code that reaches for a raw color instead of the design system\'s palette, which is one of the most common sources of visual drift.',
+  helpUri: 'https://uiseal.io/docs/rules/no-hardcoded-color',
 
   checkCssDeclaration(decl: Declaration, ctx: RuleContext): void {
     checkAndReport(

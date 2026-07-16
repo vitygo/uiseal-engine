@@ -13,6 +13,10 @@ export const noArbitraryFontSize: Rule = {
   id: 'no-arbitrary-font-size',
   category: 'design',
   defaultSeverity: 'error',
+  shortDescription: 'Disallow font-size values outside the type scale',
+  fullDescription:
+    'Flags a font-size declaration whose value is not in the configured type scale, suggesting the nearest token when the value is a close near-miss. Keeps typography consistent instead of accumulating one-off sizes across components.',
+  helpUri: 'https://uiseal.io/docs/rules/no-arbitrary-font-size',
 
   checkCssDeclaration(decl: Declaration, ctx: RuleContext): void {
     if (decl.prop !== 'font-size') return;

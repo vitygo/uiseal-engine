@@ -23,6 +23,10 @@ export const noPositiveTabindex: Rule = {
   id: 'no-positive-tabindex',
   category: 'a11y',
   defaultSeverity: 'warning',
+  shortDescription: 'Disallow tabIndex values greater than 0',
+  fullDescription:
+    'Flags a positive tabIndex, which overrides the natural DOM tab order and creates a confusing, hard-to-maintain keyboard navigation sequence. Use tabIndex={0} for natural order or tabIndex={-1} for programmatic-only focus instead.',
+  helpUri: 'https://uiseal.io/docs/rules/no-positive-tabindex',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'JSXAttribute') return;

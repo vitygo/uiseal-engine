@@ -5,6 +5,10 @@ export const noInlineStyles: Rule = {
   id: 'no-inline-styles',
   category: 'quality',
   defaultSeverity: 'warning',
+  shortDescription: 'Disallow inline style props on JSX elements',
+  fullDescription:
+    'Flags a style={{...}} prop on a JSX element, which bypasses the design system entirely — inline styles cannot be checked against tokens the same way a CSS class can, and tend to accumulate as one-off, unmaintainable overrides.',
+  helpUri: 'https://uiseal.io/docs/rules/no-inline-styles',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'JSXOpeningElement') return;

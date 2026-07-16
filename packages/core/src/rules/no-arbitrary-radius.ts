@@ -12,6 +12,10 @@ export const noArbitraryRadius: Rule = {
   id: 'no-arbitrary-radius',
   category: 'design',
   defaultSeverity: 'warning',
+  shortDescription: 'Disallow border-radius values outside the radius scale',
+  fullDescription:
+    'Flags a border-radius value that is not in the configured radius scale, suggesting the nearest token when the value is a close near-miss. Keeps corner rounding consistent across components instead of drifting one pixel at a time.',
+  helpUri: 'https://uiseal.io/docs/rules/no-arbitrary-radius',
 
   checkCssDeclaration(decl: Declaration, ctx: RuleContext): void {
     const RADIUS_PROPS = new Set([

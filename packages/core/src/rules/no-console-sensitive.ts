@@ -46,6 +46,10 @@ export const noConsoleSensitive: Rule = {
   id: 'no-console-sensitive',
   category: 'security',
   defaultSeverity: 'warning',
+  shortDescription: 'Disallow logging sensitive-looking values',
+  fullDescription:
+    'Flags a console call that appears to log a credential, token, password, or similarly sensitive value based on the logged variable or property name. Logs are frequently shipped to third-party services or left visible in browser consoles, turning an accidental log line into a credential leak.',
+  helpUri: 'https://uiseal.io/docs/rules/no-console-sensitive',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'CallExpression') return;

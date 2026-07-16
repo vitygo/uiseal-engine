@@ -6,6 +6,10 @@ export const noUnauthorizedFontFamily: Rule = {
   id: 'no-unauthorized-font-family',
   category: 'design',
   defaultSeverity: 'error',
+  shortDescription: 'Disallow font families outside the approved list',
+  fullDescription:
+    'Flags a font-family declaration whose first family name is not in the configured list of approved fonts. Prevents an unapproved font from silently entering the codebase via a copy-pasted snippet or a third-party component.',
+  helpUri: 'https://uiseal.io/docs/rules/no-unauthorized-font-family',
 
   checkCssDeclaration(decl: Declaration, ctx: RuleContext): void {
     if (decl.prop !== 'font-family') return;

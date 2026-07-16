@@ -24,6 +24,10 @@ export const noTodoWithoutTicket: Rule = {
   id: 'no-todo-without-ticket',
   category: 'quality',
   defaultSeverity: 'warning',
+  shortDescription: 'Require a ticket reference on TODO/FIXME comments',
+  fullDescription:
+    'Flags a TODO or FIXME comment that does not reference a ticket ID, issue number, or URL. An untracked TODO tends to be forgotten; one with a reference at least has a chance of being followed up on.',
+  helpUri: 'https://uiseal.io/docs/rules/no-todo-without-ticket',
 
   checkCssComment(comment: Comment, ctx: RuleContext): void {
     checkCommentText(

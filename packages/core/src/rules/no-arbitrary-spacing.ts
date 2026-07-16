@@ -9,6 +9,10 @@ export const noArbitrarySpacing: Rule = {
   id: 'no-arbitrary-spacing',
   category: 'design',
   defaultSeverity: 'error',
+  shortDescription: 'Disallow margin/padding/gap values outside the spacing scale',
+  fullDescription:
+    'Flags margin, padding, gap, and inset values that are not in the configured spacing scale. Arbitrary spacing is a strong signal of a value chosen because it "looked right" rather than pulled from the nearest token, and it accumulates into visually inconsistent layouts over time.',
+  helpUri: 'https://uiseal.io/docs/rules/no-arbitrary-spacing',
 
   checkCssDeclaration(decl: Declaration, ctx: RuleContext): void {
     if (!SPACING_PROP_RE.test(decl.prop)) return;

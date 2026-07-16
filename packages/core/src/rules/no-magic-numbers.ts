@@ -21,6 +21,10 @@ export const noMagicNumbers: Rule = {
   id: 'no-magic-numbers',
   category: 'quality',
   defaultSeverity: 'warning',
+  shortDescription: 'Disallow unexplained numeric literals',
+  fullDescription:
+    'Flags a numeric literal used directly in an expression instead of being extracted to a named constant. A magic number gives no hint of what it means or why that specific value was chosen, and is easy to miss when it needs to change everywhere it is duplicated.',
+  helpUri: 'https://uiseal.io/docs/rules/no-magic-numbers',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     // x * 86400, y + 3600, etc. — flag magic operands

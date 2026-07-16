@@ -8,6 +8,10 @@ export const enforceContrast: Rule = {
   id: 'enforce-contrast',
   category: 'design',
   defaultSeverity: 'error',
+  shortDescription: 'Disallow color/background pairs that fail WCAG contrast',
+  fullDescription:
+    'Computes the contrast ratio between a color declaration and its same-block background-color sibling, flagging pairs below the configured WCAG level\'s minimum ratio. Only same-block pairs are checked, so this is a best-effort static check, not a substitute for a full accessibility audit.',
+  helpUri: 'https://uiseal.io/docs/rules/enforce-contrast',
 
   // Only fires when processing a `color` declaration; we then look for a
   // background sibling in the same block. This ensures each pair is checked

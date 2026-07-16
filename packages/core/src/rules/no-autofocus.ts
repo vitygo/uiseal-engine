@@ -5,6 +5,10 @@ export const noAutofocus: Rule = {
   id: 'no-autofocus',
   category: 'a11y',
   defaultSeverity: 'warning',
+  shortDescription: 'Disallow the autoFocus attribute',
+  fullDescription:
+    'Flags autoFocus, which moves keyboard and screen-reader focus without the user taking any action. This is disorienting for screen reader users and often surprising for sighted users on page load.',
+  helpUri: 'https://uiseal.io/docs/rules/no-autofocus',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'JSXAttribute') return;

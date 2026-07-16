@@ -27,6 +27,10 @@ export const noOversizedComponent: Rule = {
   id: 'no-oversized-component',
   category: 'quality',
   defaultSeverity: 'warning',
+  shortDescription: 'Disallow components over a line-count threshold',
+  fullDescription:
+    'Flags a component whose source exceeds the configured line limit, a proxy for "this component is doing too much and should be split." Oversized components are harder to review, test, and safely modify — a common outcome of iterative, AI-assisted additions to a single file.',
+  helpUri: 'https://uiseal.io/docs/rules/no-oversized-component',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     // function MyComponent() { ... }

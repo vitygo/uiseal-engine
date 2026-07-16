@@ -21,6 +21,10 @@ export const noDivButton: Rule = {
   id: 'no-div-button',
   category: 'a11y',
   defaultSeverity: 'warning',
+  shortDescription: 'Require full keyboard support on clickable divs/spans',
+  fullDescription:
+    'Flags a div or span with an onClick handler that is missing role="button", tabIndex={0}, and an onKeyDown handler. An element that only responds to a mouse click is invisible to keyboard-only users.',
+  helpUri: 'https://uiseal.io/docs/rules/no-div-button',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'JSXOpeningElement') return;

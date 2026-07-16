@@ -43,6 +43,10 @@ export const noEnvInClient: Rule = {
   id: 'no-env-in-client',
   category: 'security',
   defaultSeverity: 'error',
+  shortDescription: 'Disallow server-only env vars in client code',
+  fullDescription:
+    'Flags process.env.X access in client-bundled code where X is not a recognized public-prefixed variable (e.g. NEXT_PUBLIC_). Environment variables referenced in client code get inlined into the JS bundle at build time, so a server secret referenced this way ships to every visitor\'s browser.',
+  helpUri: 'https://uiseal.io/docs/rules/no-env-in-client',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type === 'Program') {

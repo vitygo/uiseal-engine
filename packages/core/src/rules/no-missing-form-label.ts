@@ -24,6 +24,10 @@ export const noMissingFormLabel: Rule = {
   id: 'no-missing-form-label',
   category: 'a11y',
   defaultSeverity: 'error',
+  shortDescription: 'Require an accessible label on form inputs',
+  fullDescription:
+    'Flags a form input, select, or textarea with no associated <label>, aria-label, or aria-labelledby. Unlabeled form fields are one of the most common and most disruptive accessibility failures for screen reader users.',
+  helpUri: 'https://uiseal.io/docs/rules/no-missing-form-label',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'JSXOpeningElement') return;

@@ -22,6 +22,10 @@ export const noEmptyButton: Rule = {
   id: 'no-empty-button',
   category: 'a11y',
   defaultSeverity: 'error',
+  shortDescription: 'Require an accessible label on buttons',
+  fullDescription:
+    'Flags a <button> element with no aria-label and no visible text content. A button with only an icon and no label is announced as just "button" by assistive technology, giving the user no idea what it does.',
+  helpUri: 'https://uiseal.io/docs/rules/no-empty-button',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'JSXElement') return;

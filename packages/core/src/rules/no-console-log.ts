@@ -18,6 +18,10 @@ export const noConsoleLog: Rule = {
   id: 'no-console-log',
   category: 'quality',
   defaultSeverity: 'warning',
+  shortDescription: 'Disallow console.log left in committed code',
+  fullDescription:
+    'Flags console.log calls, which are almost always debugging leftovers. Use a real logger, or console.warn/error for genuinely intentional runtime output.',
+  helpUri: 'https://uiseal.io/docs/rules/no-console-log',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     // Program is always the first node visited per file; use it to collect

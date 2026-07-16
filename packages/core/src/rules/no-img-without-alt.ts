@@ -18,6 +18,10 @@ export const noImgWithoutAlt: Rule = {
   id: 'no-img-without-alt',
   category: 'a11y',
   defaultSeverity: 'error',
+  shortDescription: 'Require alt text on images',
+  fullDescription:
+    'Flags an <img> element with no alt attribute. Screen readers announce nothing useful for an unlabeled image; decorative images should use alt="" explicitly, and content images need a descriptive alt.',
+  helpUri: 'https://uiseal.io/docs/rules/no-img-without-alt',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type !== 'JSXOpeningElement') return;

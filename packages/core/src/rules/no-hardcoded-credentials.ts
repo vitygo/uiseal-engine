@@ -41,6 +41,10 @@ export const noHardcodedCredentials: Rule = {
   id: 'no-hardcoded-credentials',
   category: 'security',
   defaultSeverity: 'error',
+  shortDescription: 'Disallow hardcoded credential-shaped string literals',
+  fullDescription:
+    'Flags a string literal assigned to a credential-shaped variable or property name (api key, secret, password, token, ...) that looks like a real value rather than a placeholder. Hardcoded credentials committed to source control are one of the most common real-world breach vectors.',
+  helpUri: 'https://uiseal.io/docs/rules/no-hardcoded-credentials',
 
   checkJsxNode(node: TSESTree.Node, ctx: RuleContext): void {
     if (node.type === 'VariableDeclarator') {
