@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { glob } from 'glob';
-import { loadConfig, analyze, allRules, diffScans, formatDiffAsMarkdown, getParserForFile, buildGlob } from '@uiseal/core';
+import { loadConfig, analyze, allRules, diffScans, formatDiffAsMarkdown, getParserForFile, buildGlob, formatSarif, version } from '@uiseal/core';
 import type { Violation, ViolationSnapshot, uisealConfig } from '@uiseal/core';
 
 // Category lookup: Violation doesn't carry category but ViolationSnapshot requires it.
@@ -24,6 +24,28 @@ function toSnapshot(v: Violation): ViolationSnapshot {
     category: ruleCategoryMap.get(v.ruleId) ?? 'quality',
     ...(v.fix ? { fix: v.fix } : {}),
   };
+}
+
+function snapshotToViolation(s: ViolationSnapshot): Violation {
+  return {
+    ruleId: s.ruleId,
+    severity: s.severity,
+    message: s.message,
+    file: s.file,
+    line: s.line,
+    column: s.column,
+    ...(s.fix ? { fix: s.fix } : {}),
+  };
+}
+
+// sarif-file is additive: existing PR comment + annotation behavior is
+// unchanged either way. GitHub ingests SARIF via a separate
+// github/codeql-action/upload-sarif step in the user's workflow — this
+// action only produces the file.
+function writeSarifFile(violations: Violation[], sarifFile: string): void {
+  const sarif = formatSarif(violations, { cwd: process.cwd(), version });
+  fs.writeFileSync(path.resolve(sarifFile), sarif);
+  core.info(`UISeal: wrote SARIF (${violations.length} violation(s)) to ${sarifFile}`);
 }
 
 async function collectSnapshots(
@@ -150,7 +172,7 @@ async function postMetrics(violations: Violation[]): Promise<void> {
   });
 }
 
-async function runPrReview(configInput: string, reportEnabled: boolean): Promise<void> {
+async function runPrReview(configInput: string, reportEnabled: boolean, sarifFile: string): Promise<void> {
   const configDir = path.dirname(path.resolve(configInput));
   const { config } = await loadConfig(configDir);
 
@@ -199,16 +221,11 @@ async function runPrReview(configInput: string, reportEnabled: boolean): Promise
   }
 
   if (reportEnabled) {
-    const headViolations: Violation[] = headSnapshots.map(s => ({
-      ruleId: s.ruleId,
-      severity: s.severity,
-      message: s.message,
-      file: s.file,
-      line: s.line,
-      column: s.column,
-      ...(s.fix ? { fix: s.fix } : {}),
-    }));
-    await postMetrics(headViolations);
+    await postMetrics(headSnapshots.map(snapshotToViolation));
+  }
+
+  if (sarifFile) {
+    writeSarifFile(headSnapshots.map(snapshotToViolation), sarifFile);
   }
 
   core.setOutput('verdict', diff.verdict);
@@ -225,9 +242,10 @@ async function runPrReview(configInput: string, reportEnabled: boolean): Promise
 export async function run(): Promise<void> {
   const configInput = core.getInput('config') || 'uiseal.config.ts';
   const reportEnabled = core.getInput('report') === 'true';
+  const sarifFile = core.getInput('sarif-file');
 
   if (process.env['GITHUB_EVENT_NAME'] === 'pull_request') {
-    await runPrReview(configInput, reportEnabled);
+    await runPrReview(configInput, reportEnabled, sarifFile);
     return;
   }
 
@@ -272,6 +290,10 @@ export async function run(): Promise<void> {
 
   if (reportEnabled) {
     await postMetrics(violations);
+  }
+
+  if (sarifFile) {
+    writeSarifFile(violations, sarifFile);
   }
 
   const errorCount = violations.filter((v) => v.severity === 'error').length;
