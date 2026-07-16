@@ -10,6 +10,7 @@ import { installHooksCommand } from './commands/install-hooks.js';
 import { baselineCommand } from './commands/baseline.js';
 import { diffCommand } from './commands/diff.js';
 import { driftCommand } from './commands/drift.js';
+import { watchCommand } from './commands/watch.js';
 import React from 'react';
 import { render } from 'ink';
 import App from './tui/App.js';
@@ -28,7 +29,7 @@ const isInteractive =
 // from a bare `uiseal --fix` in a TTY session where the interactive picker
 // would otherwise take over.
 const topLevelArgs = process.argv.slice(2);
-const knownCommands = ['check', 'init', 'install-hooks', 'baseline', 'diff', 'drift'];
+const knownCommands = ['check', 'init', 'install-hooks', 'baseline', 'diff', 'drift', 'watch'];
 const hasKnownCommand = topLevelArgs.some((a) => knownCommands.includes(a));
 const requestedFix = topLevelArgs.includes('--fix') || topLevelArgs.includes('--dry-run');
 
@@ -53,7 +54,7 @@ if (!hasKnownCommand && requestedFix && process.stdin.isTTY === true && process.
     if (!pendingCommand) break; // user pressed q / Ctrl-C
 
     const cmd = (pendingCommand as string[])[0] ?? '';
-    const isSetupCmd = cmd === 'init' || cmd === 'install-hooks';
+    const isSetupCmd = cmd === 'init' || cmd === 'install-hooks' || cmd === 'watch';
 
     const proc = spawn(process.execPath, [process.argv[1]!, ...(pendingCommand as string[])], {
       stdio: 'inherit',
@@ -101,6 +102,7 @@ if (!hasKnownCommand && requestedFix && process.stdin.isTTY === true && process.
   program.addCommand(baselineCommand);
   program.addCommand(diffCommand);
   program.addCommand(driftCommand);
+  program.addCommand(watchCommand);
 
   program.parse();
 }

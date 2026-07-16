@@ -43,6 +43,7 @@ const MENU_ITEMS: MenuItem[] = [
   { command: 'baseline', description: 'Manage design debt baseline' },
   { command: 'diff', description: 'Compare against base branch' },
   { command: 'drift', description: 'Detect drift between token source and code' },
+  { command: 'watch', description: 'Live file watching with incremental scanning' },
   { command: 'install-hooks', description: 'Install git pre-commit hooks' },
 ];
 
