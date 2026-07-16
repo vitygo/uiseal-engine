@@ -26,6 +26,61 @@ uiseal init --from code      # explicitly scan source code (today's behavior)
 uiseal drift    # compare the LIVE token source against the LIVE code — see below
 ```
 
+## Output formats
+
+`uiseal check` supports three output formats via `--format`:
+
+```sh
+uiseal check                              # pretty: ANSI-colored terminal report (default)
+uiseal check --format json                # machine-readable JSON for scripting
+uiseal check --format sarif                # SARIF 2.1.0 for GitHub's Security tab
+uiseal check --format sarif --output results.sarif  # write straight to a file
+```
+
+`--output <file>` writes whichever format you chose directly to a file instead of stdout — this avoids shell-redirection footguns (`>` truncating before a crashed process flushes its buffer, `2>&1` mixing stderr diagnostics into the file, etc.) and is the recommended way to produce a SARIF file for upload. Exit codes are identical across all three formats: `0` if no error-severity violations were found, `1` otherwise.
+
+For `json`/`sarif`, **stdout carries only the payload** — no banners, no progress lines, no ANSI color codes. Scan counts, baseline status, and other diagnostic text are written to stderr instead, so `uiseal check --format sarif > results.sarif` and `uiseal check --format json | jq ...` always see clean, parseable output on stdout.
+
+### JSON format
+
+```sh
+uiseal check --format json | jq '.summary.errors'
+```
+
+```jsonc
+{
+  "violations": [
+    { "ruleId": "no-hardcoded-color", "severity": "error", "message": "...", "file": "src/Button.tsx", "line": 4, "column": 10, "fix": { "suggested": "var(--color-primary)" } }
+  ],
+  "summary": { "total": 1, "errors": 1, "warnings": 0, "fixable": 1, "filesScanned": 12 }
+}
+```
+
+### SARIF format and the GitHub Security tab
+
+[SARIF](https://sarifweb.azurewebsites.net/) (Static Analysis Results Interchange Format) is the standard GitHub uses to power the Security tab: inline PR annotations, a browsable rule catalog, and drift tracking across commits. `uiseal check --format sarif` generates a SARIF 2.1.0 document with a `tool.driver.rules` catalog listing **all** uiseal rules (so the Security tab shows the full ruleset, not just whatever happened to fire on this run) and one `result` per violation, with repo-root-relative, forward-slash file URIs as GitHub's ingestion requires.
+
+This action doesn't upload SARIF itself — pair it with `github/codeql-action/upload-sarif`:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: your-org/uiseal-action@v1
+  with:
+    sarif-file: uiseal.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: uiseal.sarif
+```
+
+Or from the CLI directly in any CI system:
+
+```sh
+uiseal check --format sarif --output uiseal.sarif
+```
+
+**Known limitation:** SARIF's `fixes` field (a machine-applicable patch GitHub can display) is omitted for now — uiseal's violation positions point at the start of the declaration/property, not the exact value offset, so a precise fix *region* isn't available the way `--fix` computes it internally. GitHub's SARIF fix support is display-only anyway (it never applies a fix automatically), so the suggested replacement value is folded into the result's message text instead, where it's actually visible in the Security tab.
+
 ## Rules
 
 | Rule | Category | Description |

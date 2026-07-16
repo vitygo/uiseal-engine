@@ -81,6 +81,30 @@ On `pull_request` events the action checks only the files changed in the PR (fet
 | `config` | `uiseal.config.ts`   | Path to the uiseal config file, relative to the repo root. |
 | `token`  | `''`                 | GitHub token for posting PR review comments. Pass `${{ secrets.GITHUB_TOKEN }}`. If omitted the comment step is skipped gracefully. |
 | `report` | `false`              | When `true`, posts aggregated violation counts to the uiseal backend. Requires `uiseal_TOKEN` and `uiseal_API_URL` environment variables. No source code or file paths are ever transmitted — only counts per rule ID. |
+| `sarif-file` | `''`             | If set, write violations as a SARIF 2.1.0 file at this path (relative to the repo root). See [SARIF upload](#sarif-upload-security-tab) below. |
+
+## SARIF upload (Security tab)
+
+Set `sarif-file` to generate a [SARIF](https://sarifweb.azurewebsites.net/) report, then upload it with `github/codeql-action/upload-sarif` to populate the repo's Security tab (inline PR annotations, a browsable rule catalog, drift tracking across commits). This action only produces the file — it never uploads on your behalf, since that requires the `security-events: write` permission most workflows don't otherwise need.
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write   # required for the upload-sarif step
+
+steps:
+  - uses: actions/checkout@v4
+
+  - uses: your-org/uiseal@v1
+    with:
+      sarif-file: uiseal.sarif
+
+  - uses: github/codeql-action/upload-sarif@v3
+    if: always()   # upload even when uiseal found blocking violations
+    with:
+      sarif_file: uiseal.sarif
+```
 
 ## Outputs
 

@@ -51,7 +51,12 @@ uiseal check --config path/to/dir     # config in a specific directory
 uiseal check --update-baseline        # rescan and rewrite baseline, exit 0
 uiseal check --no-baseline            # ignore baseline, report all violations
 uiseal check --verbose                # full output even for large result sets
+uiseal check --format json            # machine-readable JSON on stdout
+uiseal check --format sarif           # SARIF 2.1.0 — for GitHub's Security tab
+uiseal check --format sarif --output results.sarif   # write straight to a file
 ```
+
+`--format` defaults to `pretty` (the ANSI-colored terminal report shown above). `json` and `sarif` emit only the payload on stdout — no banners, no colors, no progress lines, so `uiseal check --format sarif > results.sarif` and `uiseal check --format json | jq ...` always get clean, parseable output. `--output <file>` writes the chosen format straight to a file instead, sidestepping shell-redirection issues. Exit codes are identical across all formats.
 
 ### `uiseal init`
 
@@ -148,6 +153,28 @@ The TUI results screen has a **New / All** toggle (`n` key) to switch between ba
 ```
 
 Exits with code 1 on errors, 0 on clean or warnings-only.
+
+For GitHub's Security tab (inline PR annotations, a browsable rule catalog, drift tracking across commits), generate a SARIF file and upload it with `github/codeql-action/upload-sarif`:
+
+```yaml
+permissions:
+  security-events: write   # required to upload SARIF
+
+steps:
+  - uses: actions/checkout@v4
+  - run: npx uiseal check --format sarif --output uiseal.sarif
+    continue-on-error: true   # upload even when uiseal exits 1
+  - uses: github/codeql-action/upload-sarif@v3
+    if: always()
+    with:
+      sarif_file: uiseal.sarif
+```
+
+For scripting against results directly:
+
+```sh
+uiseal check --format json | jq '.summary.errors'
+```
 
 ## Network behaviour
 
