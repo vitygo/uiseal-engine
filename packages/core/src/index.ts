@@ -23,6 +23,8 @@ export { allRules, securityRules } from './rules/index.js';
 export { postAnalyzerMetadata } from './analyzers/post-analyzer-metadata.js';
 export { analyze } from './runner.js';
 export type { AnalyzeInput, AnalysisResult } from './runner.js';
+export { IncrementalAnalyzer } from './incremental/analyzer.js';
+export type { FileChange, IncrementalSummary } from './incremental/analyzer.js';
 export { validateLicense, getRulesForPlan } from './license/index.js';
 export type { Plan, LicenseState, ValidateResponse } from './license/index.js';
 export { fetchAppConfig } from './app-config/index.js';

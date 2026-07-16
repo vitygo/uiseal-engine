@@ -56,6 +56,26 @@ export interface AnalysisResult {
   licenseState: LicenseState;
 }
 
+// Everything a single file contributes: its own rule violations, plus the
+// raw material the cross-file post-analyzers need (defined tokens, var
+// refs, spacing usages). Kept separate from Violation because these carry
+// fields no Violation has (a TokenDef's value, a SpacingUsage's valuePx) —
+// see incremental/analyzer.ts, which caches one of these per file so a
+// single changed file can be re-analyzed without re-parsing the rest of
+// the project, then re-runs just the post-analyzers over the merged totals.
+export interface FileAnalysis {
+  violations: Violation[];
+  definedTokens: TokenDef[];
+  usedVarRefs: string[];
+  spacingUsages: SpacingUsage[];
+}
+
+export interface PostAnalyzerInputs {
+  definedTokens: TokenDef[];
+  usedVarRefs: Set<string>;
+  spacingUsages: SpacingUsage[];
+}
+
 const helpers = {
   findClosestColorToken,
   isAllowedSpacing,
@@ -64,67 +84,82 @@ const helpers = {
   isAllowedFontFamily,
 };
 
-export async function analyze({ files, config, rules, projectRoot, licenseState: providedLicenseState }: AnalyzeInput): Promise<AnalysisResult> {
-  let licenseState: LicenseState;
-  if (providedLicenseState !== undefined) {
-    licenseState = providedLicenseState;
-  } else {
-    const token = process.env['UISEAL_TOKEN'] ?? null;
-    const apiUrl = process.env['UISEAL_API_URL'] ?? 'https://api.uiseal.io';
-    const root = projectRoot ?? process.cwd();
-    licenseState = await validateLicense(token, apiUrl, root);
+const EMPTY_FILE_ANALYSIS: FileAnalysis = { violations: [], definedTokens: [], usedVarRefs: [], spacingUsages: [] };
+
+// Parses and runs every checkCss*/checkJsxNode rule against ONE file.
+// Exported so IncrementalAnalyzer can re-analyze a single changed file
+// without re-parsing the whole project; analyze() below is just this
+// function run in a loop plus the cross-file post-analyzers at the end.
+export function analyzeFile(filePath: string, code: string, config: uisealConfig, rules: Rule[]): FileAnalysis {
+  if (config.ignore.length > 0 && micromatch.isMatch(filePath, config.ignore)) {
+    return EMPTY_FILE_ANALYSIS;
   }
 
-  clearEnvInClientCache();
-  const violations: Violation[] = [];
+  const parser = getParserForFile(filePath);
+  if (!parser) return EMPTY_FILE_ANALYSIS;
 
-  // State collected across all files for post-analysis
+  let parsed: ParsedFile;
+  try {
+    parsed = parser.parse(code, filePath);
+  } catch (err) {
+    return {
+      violations: [
+        {
+          ruleId: 'parse-error',
+          severity: 'warning',
+          message: `Failed to parse file: ${err instanceof Error ? err.message : String(err)}`,
+          file: filePath,
+          line: 1,
+          column: 1,
+        },
+      ],
+      definedTokens: [],
+      usedVarRefs: [],
+      spacingUsages: [],
+    };
+  }
+
   const definedTokens: TokenDef[] = [];
   const usedVarRefs = new Set<string>();
   const spacingUsages: SpacingUsage[] = [];
+  let violations: Violation[];
 
-  for (const [filePath, code] of files) {
-    if (config.ignore.length > 0 && micromatch.isMatch(filePath, config.ignore)) {
-      continue;
-    }
-
-    const parser = getParserForFile(filePath);
-    if (!parser) continue;
-
-    let parsed: ParsedFile;
-    try {
-      parsed = parser.parse(code, filePath);
-    } catch (err) {
-      violations.push({
-        ruleId: 'parse-error',
-        severity: 'warning',
-        message: `Failed to parse file: ${err instanceof Error ? err.message : String(err)}`,
-        file: filePath,
-        line: 1,
-        column: 1,
-      });
-      continue;
-    }
-
-    if (parsed.kind === 'css') {
-      violations.push(...analyzeCss(filePath, code, parsed.root, config, rules, definedTokens, usedVarRefs, spacingUsages));
-    } else if (parsed.kind === 'jsx') {
-      violations.push(...analyzeJsx(filePath, code, parsed.ast, config, rules, usedVarRefs));
-    } else if (parsed.kind === 'vue') {
-      violations.push(...analyzeVue(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages));
-    } else if (parsed.kind === 'angular') {
-      if (!parsed.isComponent) continue; // not an Angular component — nothing to check
-      violations.push(...analyzeAngular(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages));
-    } else if (parsed.kind === 'svelte') {
-      violations.push(...analyzeSvelte(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages));
-    }
+  if (parsed.kind === 'css') {
+    violations = analyzeCss(filePath, code, parsed.root, config, rules, definedTokens, usedVarRefs, spacingUsages);
+  } else if (parsed.kind === 'jsx') {
+    violations = analyzeJsx(filePath, code, parsed.ast, config, rules, usedVarRefs);
+  } else if (parsed.kind === 'vue') {
+    violations = analyzeVue(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages);
+  } else if (parsed.kind === 'angular') {
+    violations = parsed.isComponent
+      ? analyzeAngular(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages)
+      : []; // not an Angular component — nothing to check
+  } else if (parsed.kind === 'svelte') {
+    violations = analyzeSvelte(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages);
+  } else {
+    violations = [];
   }
 
-  // Post-analysis: dead design tokens
-  violations.push(...analyzeDeadTokens(definedTokens, usedVarRefs, config));
+  return { violations, definedTokens, usedVarRefs: [...usedVarRefs], spacingUsages };
+}
 
-  // Post-analysis: spacing near token (refines no-arbitrary-spacing)
-  const { violations: nearTokenViolations, suppressKeys } = analyzeSpacingNearToken(spacingUsages, config);
+// Runs the cross-file post-analyzers (dead-token, spacing-near-token,
+// variant-sprawl) over already-collected inputs and applies the
+// no-arbitrary-spacing suppression spacing-near-token supersedes. `files`
+// is only needed for variant-sprawl, which — unlike the other two —
+// re-parses raw file content itself to compare component structure.
+export function runPostAnalyzers(
+  baseViolations: Violation[],
+  inputs: PostAnalyzerInputs,
+  files: Map<string, string>,
+  config: uisealConfig,
+  licenseState: LicenseState,
+): Violation[] {
+  const violations = [...baseViolations];
+
+  violations.push(...analyzeDeadTokens(inputs.definedTokens, inputs.usedVarRefs, config));
+
+  const { violations: nearTokenViolations, suppressKeys } = analyzeSpacingNearToken(inputs.spacingUsages, config);
   if (suppressKeys.size > 0) {
     // Remove no-arbitrary-spacing violations that spacing-near-token supersedes
     const toRemove = new Set<number>();
@@ -141,7 +176,7 @@ export async function analyze({ files, config, rules, projectRoot, licenseState:
   }
   violations.push(...nearTokenViolations);
 
-  // Post-analysis: variant sprawl (Team+ tier only)
+  // Variant sprawl (Team+ tier only)
   if (licenseState.plan !== 'free') {
     const sprawlResult = analyzeVariantSprawl(files, config);
     if (!Array.isArray(sprawlResult)) {
@@ -150,6 +185,38 @@ export async function analyze({ files, config, rules, projectRoot, licenseState:
       violations.push(...sprawlResult);
     }
   }
+
+  return violations;
+}
+
+export async function analyze({ files, config, rules, projectRoot, licenseState: providedLicenseState }: AnalyzeInput): Promise<AnalysisResult> {
+  let licenseState: LicenseState;
+  if (providedLicenseState !== undefined) {
+    licenseState = providedLicenseState;
+  } else {
+    const token = process.env['UISEAL_TOKEN'] ?? null;
+    const apiUrl = process.env['UISEAL_API_URL'] ?? 'https://api.uiseal.io';
+    const root = projectRoot ?? process.cwd();
+    licenseState = await validateLicense(token, apiUrl, root);
+  }
+
+  clearEnvInClientCache();
+  const baseViolations: Violation[] = [];
+
+  // State collected across all files for post-analysis
+  const definedTokens: TokenDef[] = [];
+  const usedVarRefs = new Set<string>();
+  const spacingUsages: SpacingUsage[] = [];
+
+  for (const [filePath, code] of files) {
+    const fa = analyzeFile(filePath, code, config, rules);
+    baseViolations.push(...fa.violations);
+    definedTokens.push(...fa.definedTokens);
+    for (const ref of fa.usedVarRefs) usedVarRefs.add(ref);
+    spacingUsages.push(...fa.spacingUsages);
+  }
+
+  const violations = runPostAnalyzers(baseViolations, { definedTokens, usedVarRefs, spacingUsages }, files, config, licenseState);
 
   return { violations, licenseState };
 }
