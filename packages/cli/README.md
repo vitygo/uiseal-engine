@@ -88,6 +88,19 @@ uiseal diff main
 uiseal diff --markdown    # output markdown (for PR comments / CI artifacts)
 ```
 
+### `uiseal watch [path]`
+
+Watch files and re-scan incrementally as they change — only the file(s) that changed are re-analyzed, not the whole project, so updates stay fast even on large codebases. Ideal for running alongside an AI coding tool (Cursor, Claude Code, ...): violations show up within a few hundred milliseconds of a file being written, instead of at the next `uiseal check`.
+
+```sh
+uiseal watch
+uiseal watch src                  # watch a specific directory
+uiseal watch --debounce 500       # wait 500ms of quiet before re-scanning (default 300ms)
+uiseal watch --no-clear           # don't clear the terminal between updates
+```
+
+Terminal clears and redisplays on each update (same pattern as `tsc --watch`), showing the running violation totals, the file that just changed, and the same violation list `uiseal check` prints. Press `q` or `Ctrl-C` to stop; exits with the same code `uiseal check` would.
+
 ### `uiseal install-hooks`
 
 Wires up husky + lint-staged so `uiseal check --staged` runs before every commit. All steps are idempotent.

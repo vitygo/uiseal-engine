@@ -24,7 +24,45 @@ uiseal init --from tailwind  # explicitly generate from tailwind.config.*
 uiseal init --from css-vars  # explicitly generate from a CSS/SCSS variables file
 uiseal init --from code      # explicitly scan source code (today's behavior)
 uiseal drift    # compare the LIVE token source against the LIVE code — see below
+uiseal watch    # live incremental re-scan as files change — see below
 ```
+
+## Watch mode
+
+`uiseal watch` re-scans incrementally: it does one full initial scan, then re-analyzes only the file(s) that actually changed on every save, instead of re-scanning the whole project. On a project with hundreds of files, that's the difference between an update landing in well under 100ms and a multi-second full rescan on every keystroke-adjacent save — which matters most when an AI tool is generating or editing code and files are changing every few seconds.
+
+```sh
+uiseal watch                       # watch the current directory
+uiseal watch src                   # watch a specific directory
+uiseal watch --debounce 500        # wait 500ms of quiet before re-scanning (default 300ms)
+uiseal watch --no-clear            # don't clear the terminal between updates
+```
+
+Recommended workflow: keep `uiseal watch` running in a terminal alongside Cursor, Claude Code, or any other AI coding tool. Violations show up within a few hundred milliseconds of the AI writing a file — hardcoded colors, missing alt text, arbitrary Tailwind values — instead of surfacing only at the next `uiseal check` or CI run, well after the AI (or you) have moved on to something else.
+
+Each update shows a small header with the running totals plus which file just changed, then the same violation list `uiseal check` prints:
+
+```
+┌────────────────────────────────────────────────────────┐
+│  uiseal watch                                          │
+│  3 violations (2 errors, 1 warnings) in 1 file          │
+│  Last update: src/App.tsx (3 violations)                │
+└────────────────────────────────────────────────────────┘
+
+  src/App.tsx
+    2:16
+      error  Hardcoded color "#1a73e8" in "color". Did you mean var(primary)?  [no-hardcoded-color]
+      fix: var(primary)
+    ...
+
+✖  2 errors, 1 warning in 1 file
+
+Watching 247 files... press q to quit
+```
+
+Press `q` or `Ctrl-C` to stop; it prints a final summary and exits with the same code `uiseal check` would (`1` if any error-severity violations remain, `0` otherwise). It also appears as an entry in the interactive TUI (`uiseal` with no arguments).
+
+**How incremental scanning works:** the 3 cross-file checks (`no-dead-token`, `spacing-near-token`, `variant-sprawl`) can't be computed from a single changed file in isolation, since they compare data across the whole project — those still re-run on every update, but over already-extracted per-file data rather than by re-parsing every file, so they stay fast even on a large project.
 
 ## Output formats
 
