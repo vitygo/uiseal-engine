@@ -26,6 +26,8 @@ const GREEN = '\x1b[32m';
 const RED = '\x1b[31m';
 const DIM = '\x1b[2m';
 
+export type CheckFormat = 'pretty' | 'json' | 'sarif';
+
 export interface CheckOptions {
   configDir?: string;
   staged?: boolean;
@@ -36,6 +38,10 @@ export interface CheckOptions {
   verbose?: boolean;
   fix?: boolean;
   dryRun?: boolean;
+  /** Output format; only affects where diagnostic/banner text goes and whether formatReport runs — json/sarif payload construction happens in the CLI command layer. Defaults to 'pretty'. */
+  format?: CheckFormat;
+  /** True when the caller (the `--output <file>` flag) wants the pretty report text returned instead of written straight to stdout. */
+  captureOutput?: boolean;
 }
 
 export interface CheckResult {
@@ -45,9 +51,30 @@ export interface CheckResult {
   newViolations?: Violation[];
   allViolations?: Violation[];
   baselineCount?: number;
+  filesScanned: number;
+  projectRoot: string;
+  /** The exact text that would have been written to stdout for the 'pretty' format, populated only when captureOutput is true. */
+  report?: string;
 }
 
 export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
+  const format = opts.format ?? 'pretty';
+  const capture = opts.captureOutput === true;
+  const capturedLines: string[] = [];
+
+  // Diagnostic/banner text (scan counts, baseline status, fix summaries, app
+  // banners): for 'pretty' it's the primary output stream (stdout, or
+  // captured for --output); for json/sarif it must never touch stdout since
+  // stdout has to stay valid, parseable JSON/SARIF — so it goes to stderr.
+  function writeOut(msg: string): void {
+    if (format === 'pretty') {
+      if (capture) capturedLines.push(msg);
+      else process.stdout.write(msg);
+    } else {
+      process.stderr.write(msg);
+    }
+  }
+
   // Derive the config search start: explicit -c dir, then scan path, then cwd.
   const searchFrom = opts.configDir
     ? path.resolve(opts.configDir)
@@ -87,7 +114,8 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
     }
   }
 
-  process.stdout.write(`Scanned ${files.size} files\n`);
+  writeOut(`Scanned ${files.size} files\n`);
+  const filesScanned = files.size;
 
   const { violations: rawViolations } = await analyze({ files, config, rules: allRules });
   const resolvedBaselinePath = path.resolve(projectRoot, config.baseline.path);
@@ -98,7 +126,7 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
   if (opts.fix || opts.dryRun) {
     const dryRun = opts.dryRun === true;
     const results = applyFixes(rawViolations, { dryRun });
-    process.stdout.write(formatFixSummary(results, dryRun));
+    writeOut(formatFixSummary(results, dryRun));
 
     const fixedKeys = new Set<string>();
     for (const r of results) {
@@ -123,21 +151,28 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
         baselineTotal: 0,
       },
     };
-    return { violations: rawViolations, hasErrors: hasUnfixedErrors, baseline: fixBaseline };
+    return {
+      violations: rawViolations,
+      hasErrors: hasUnfixedErrors,
+      baseline: fixBaseline,
+      filesScanned,
+      projectRoot,
+      report: capture ? capturedLines.join('') : undefined,
+    };
   }
 
   // --update-baseline: write all current violations as the new baseline, exit 0.
   if (opts.updateBaseline) {
     const fv = fingerprintViolations(rawViolations, projectRoot);
     writeBaseline(resolvedBaselinePath, fv, projectRoot);
-    process.stdout.write(`Stored ${fv.length} fingerprints in ${resolvedBaselinePath}\n`);
+    writeOut(`Stored ${fv.length} fingerprints in ${resolvedBaselinePath}\n`);
 
     // Also set baseline.enabled = true so the next plain `check` filters automatically.
     const updated = setBaselineEnabled(projectRoot, true);
     if (updated) {
-      process.stdout.write('baseline enabled in uiseal.config.json\n');
+      writeOut('baseline enabled in uiseal.config.json\n');
     } else {
-      process.stdout.write('Note: set baseline.enabled = true manually in your config (JSON config not found)\n');
+      writeOut('Note: set baseline.enabled = true manually in your config (JSON config not found)\n');
     }
 
     const noopBaseline: BaselineState = {
@@ -145,14 +180,21 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
       resolvedPath: resolvedBaselinePath,
       counts: { total: fv.length, baselined: fv.length, new: 0, resolved: 0, baselineTotal: fv.length },
     };
-    return { violations: [], hasErrors: false, baseline: noopBaseline };
+    return {
+      violations: [],
+      hasErrors: false,
+      baseline: noopBaseline,
+      filesScanned,
+      projectRoot,
+      report: capture ? capturedLines.join('') : undefined,
+    };
   }
 
   // --no-baseline: ignore baseline entirely and report everything.
   if (opts.noBaseline) {
-    process.stdout.write(formatReport(rawViolations, { verbose: opts.verbose }));
+    if (format === 'pretty') writeOut(formatReport(rawViolations, { verbose: opts.verbose }));
     if (opts.report) await postMetrics(rawViolations);
-    await printAppConfigBanner(projectRoot);
+    await printAppConfigBanner(projectRoot, writeOut);
     const total = rawViolations.length;
     const noBaseline: BaselineState = {
       status: 'disabled',
@@ -163,33 +205,37 @@ export async function runCheck(opts: CheckOptions): Promise<CheckResult> {
       violations: rawViolations,
       hasErrors: rawViolations.some((v) => v.severity === 'error'),
       baseline: noBaseline,
+      filesScanned,
+      projectRoot,
+      report: capture ? capturedLines.join('') : undefined,
     };
   }
 
   const { violations, baseline } = resolveBaselineResult(rawViolations, config, projectRoot);
 
   if (baseline.status === 'disabled') {
-    process.stdout.write('baseline: disabled (run check --update-baseline to freeze current debt)\n');
+    writeOut('baseline: disabled (run check --update-baseline to freeze current debt)\n');
   } else if (baseline.status === 'file-missing') {
-    process.stdout.write(`baseline: file not found at ${baseline.resolvedPath} — run check --update-baseline first\n`);
+    writeOut(`baseline: file not found at ${baseline.resolvedPath} — run check --update-baseline first\n`);
   } else {
     const { baselined, new: newCount, resolved, baselineTotal } = baseline.counts;
-    process.stdout.write(
-      `Design debt: ${baselineTotal} -> ${baselined} (${resolved} fixed) · ${newCount} new\n`,
-    );
+    writeOut(`Design debt: ${baselineTotal} -> ${baselined} (${resolved} fixed) · ${newCount} new\n`);
     if (resolved > 0) {
-      process.stdout.write(`Run \`uiseal baseline prune\` to bank the ${resolved} fixed issue${resolved === 1 ? '' : 's'}.\n`);
+      writeOut(`Run \`uiseal baseline prune\` to bank the ${resolved} fixed issue${resolved === 1 ? '' : 's'}.\n`);
     }
   }
 
-  process.stdout.write(formatReport(violations, { verbose: opts.verbose }));
+  if (format === 'pretty') writeOut(formatReport(violations, { verbose: opts.verbose }));
   if (opts.report) await postMetrics(violations);
-  await printAppConfigBanner(projectRoot);
+  await printAppConfigBanner(projectRoot, writeOut);
 
   return {
     violations,
     hasErrors: violations.some((v) => v.severity === 'error'),
     baseline,
+    filesScanned,
+    projectRoot,
+    report: capture ? capturedLines.join('') : undefined,
   };
 }
 
@@ -251,7 +297,7 @@ function formatFixSummary(results: FixResult[], dryRun: boolean): string {
   return lines.join('\n');
 }
 
-async function printAppConfigBanner(projectRoot: string): Promise<void> {
+async function printAppConfigBanner(projectRoot: string, writeOut: (msg: string) => void): Promise<void> {
   // Only ping the server if the user has opted in via a token or explicit banner flag.
   // This keeps uiseal fully offline by default for users on the free tier.
   if (!process.env['UISEAL_TOKEN'] && process.env['UISEAL_SHOW_BANNER'] !== '1') return;
@@ -264,9 +310,9 @@ async function printAppConfigBanner(projectRoot: string): Promise<void> {
     if (appConfig.bannerType === 'warning') color = YELLOW;
     else if (appConfig.bannerType === 'success') color = GREEN;
     else color = CYAN;
-    process.stdout.write(`${color}ℹ ${appConfig.bannerText}${RESET}\n`);
+    writeOut(`${color}ℹ ${appConfig.bannerText}${RESET}\n`);
   } else if (appConfig.betaMode) {
-    process.stdout.write(`${DIM}Running in beta — see uiseal.io for updates${RESET}\n`);
+    writeOut(`${DIM}Running in beta — see uiseal.io for updates${RESET}\n`);
   }
 }
 
