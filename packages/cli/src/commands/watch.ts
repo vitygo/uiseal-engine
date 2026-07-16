@@ -27,6 +27,26 @@ export interface WatchOptions {
 
 type WatchEvent = { type: 'change'; path: string; content: string } | { type: 'unlink'; path: string };
 
+const HARD_IGNORE = ['**/node_modules/**', '**/.git/**'];
+
+// Decides whether chokidar should prune a path. IMPORTANT: chokidar calls
+// this before stat info is available for a path it hasn't visited yet —
+// notably the watch root itself on startup. Gating solely on
+// `stats?.isDirectory()` and falling through to the file-extension check
+// when stats is absent would prune the entire watch root before chokidar
+// ever descends into it (confirmed by a real regression: the watcher ended
+// up with nothing to watch, `ready` fired immediately, and the process
+// exited as soon as stdin closed — no crash, no error, just a watcher that
+// silently watched nothing). Ignore patterns are path-only (no stat
+// needed) so they apply immediately regardless; the extension check only
+// applies once `stats` confirms the path is a file.
+export function shouldIgnorePath(filePath: string, stats: fs.Stats | undefined, ignorePatterns: string[]): boolean {
+  if (micromatch.isMatch(filePath, [...HARD_IGNORE, ...ignorePatterns])) return true;
+  if (!stats) return false;
+  if (stats.isDirectory()) return false;
+  return getParserForFile(filePath) === undefined;
+}
+
 function relPath(cwd: string, file: string): string {
   const rel = path.relative(cwd, file);
   return rel.startsWith('..') ? file : rel;
@@ -63,16 +83,6 @@ export async function runWatch(opts: WatchOptions): Promise<void> {
   const analyzer = new IncrementalAnalyzer(config, allRules);
   const knownFiles = new Set<string>();
   let lastUpdateLabel = '';
-
-  const HARD_IGNORE = ['**/node_modules/**', '**/.git/**'];
-
-  function isIgnoredPath(filePath: string): boolean {
-    return micromatch.isMatch(filePath, [...HARD_IGNORE, ...config.ignore]);
-  }
-
-  function isWatchableFile(filePath: string): boolean {
-    return getParserForFile(filePath) !== undefined;
-  }
 
   function render(): void {
     if (clearOnUpdate) process.stdout.write(CLEAR_SCREEN);
@@ -128,18 +138,7 @@ export async function runWatch(opts: WatchOptions): Promise<void> {
   }
 
   const watcher = chokidar.watch(watchRoot, {
-    // chokidar calls this before stat info is available for a path it
-    // hasn't visited yet (notably the watch root itself) — returning true
-    // for a directory just because it fails the FILE extension check would
-    // prune the whole tree before chokidar ever descends into it. Ignore
-    // patterns are path-only (no stat needed) so they apply immediately;
-    // the extension check only applies once we know it's a file.
-    ignored: (filePath: string, stats?: fs.Stats) => {
-      if (isIgnoredPath(filePath)) return true;
-      if (!stats) return false;
-      if (stats.isDirectory()) return false;
-      return !isWatchableFile(filePath);
-    },
+    ignored: (filePath: string, stats?: fs.Stats) => shouldIgnorePath(filePath, stats, config.ignore),
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: debounceMs, pollInterval: Math.min(50, debounceMs) },
   });
@@ -166,7 +165,13 @@ export async function runWatch(opts: WatchOptions): Promise<void> {
       if ((process.stdin as NodeJS.ReadStream).isTTY) {
         (process.stdin as NodeJS.ReadStream).setRawMode(false);
       }
+      // pause() alone can leave a piped (non-TTY) stdin's underlying handle
+      // ref'd — e.g. when uiseal is invoked with stdin piped from another
+      // process — which then keeps the event loop alive indefinitely even
+      // after everything else has shut down. destroy() guarantees exit; safe
+      // here since we're quitting the whole program right after.
       process.stdin.pause();
+      process.stdin.destroy();
       resolvePromise();
     }
     function onKeypress(str: string, key: { ctrl?: boolean; name?: string } | undefined): void {
