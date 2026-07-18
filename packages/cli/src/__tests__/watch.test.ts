@@ -119,4 +119,51 @@ describe('uiseal watch', () => {
     expect(exitCode).toBe(0);
     expect(output).toContain('Final: 0 violations');
   }, 15000);
+
+  it('picks up changes to a .blade.php file (buildGlob() includes backend template extensions)', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'uiseal-watch-template-'));
+    fs.writeFileSync(
+      path.join(tmpDir, 'uiseal.config.json'),
+      JSON.stringify({
+        tokens: {
+          colors: { primary: '#3b82f6' },
+          spacing: [4, 8, 16, 24],
+          fontSizes: [12, 14, 16],
+          fontFamilies: ['Inter'],
+          radii: [4, 8],
+        },
+        rules: {},
+        ignore: [],
+      }),
+    );
+    fs.writeFileSync(path.join(tmpDir, 'view.blade.php'), '<div class="px-4">hello</div>\n');
+
+    let output = '';
+    proc = spawn('node', [CLI_BIN, 'watch', '--debounce', String(DEBOUNCE_MS), '--no-clear'], { cwd: tmpDir });
+    proc.stdout!.on('data', (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    proc.stderr!.on('data', (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+
+    await waitUntil(() => output.includes('Watching'));
+    expect(output).toContain('Watching 1 files');
+    expect(lastHeader(output)).toContain('0 violations');
+
+    const beforeEditLength = output.length;
+    fs.writeFileSync(path.join(tmpDir, 'view.blade.php'), '<div class="px-4 mt-[13px]">{{ $name }}</div>\n');
+    await waitUntil(() => output.slice(beforeEditLength).includes('Last update:'));
+    const afterEdit = lastHeader(output);
+    expect(afterEdit).not.toContain('0 violations');
+    expect(afterEdit).toContain('Last update: view.blade.php');
+    expect(output).toContain('mt-[13px]');
+    expect(output).not.toContain('$name');
+
+    proc.stdin!.write('q');
+    const exitCode = await new Promise<number | null>((resolvePromise) => {
+      proc!.on('exit', (code) => resolvePromise(code));
+    });
+    expect(exitCode).toBe(0);
+  }, 15000);
 });

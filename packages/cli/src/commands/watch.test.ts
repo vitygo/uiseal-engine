@@ -47,4 +47,16 @@ describe('shouldIgnorePath', () => {
     expect(shouldIgnorePath('/repo/src/Foo.generated.tsx', fileStats(), ignore)).toBe(true);
     expect(shouldIgnorePath('/repo/src/Foo.tsx', fileStats(), ignore)).toBe(false);
   });
+
+  it('does not ignore backend template files (Blade, Jinja2, ERB, Twig)', () => {
+    expect(shouldIgnorePath('/repo/resources/views/home.blade.php', fileStats(), [])).toBe(false);
+    expect(shouldIgnorePath('/repo/templates/page.j2', fileStats(), [])).toBe(false);
+    expect(shouldIgnorePath('/repo/app/views/partial.html.erb', fileStats(), [])).toBe(false);
+    expect(shouldIgnorePath('/repo/templates/layout.html.twig', fileStats(), [])).toBe(false);
+  });
+
+  it('still ignores a plain .php file (not *.blade.php) and bare .html', () => {
+    expect(shouldIgnorePath('/repo/app/UserController.php', fileStats(), [])).toBe(true);
+    expect(shouldIgnorePath('/repo/public/index.html', fileStats(), [])).toBe(true);
+  });
 });
