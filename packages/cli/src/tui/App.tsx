@@ -11,6 +11,7 @@ import BaselineMenu from './screens/BaselineMenu.js';
 import DiffInput from './screens/DiffInput.js';
 import CommandOutput from './screens/CommandOutput.js';
 import type { CheckResult } from '../check-runner.js';
+import { pushHistory } from './palette-logic.js';
 
 type Screen =
   | 'home'
@@ -66,7 +67,7 @@ export default function App({ onLaunchCommand }: AppProps) {
   const runningProcRef = useRef<ChildProcess | null>(null);
 
   const recordPaletteHistory = (line: string) => {
-    setPaletteHistory((h) => [...h, line].slice(-10));
+    setPaletteHistory((h) => pushHistory(h, line));
   };
 
   useEffect(() => {

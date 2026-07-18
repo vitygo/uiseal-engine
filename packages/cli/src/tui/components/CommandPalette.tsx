@@ -1,16 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { getSuggestionEntries, parseCommandLine, COMMANDS, type SuggestionEntry } from '../command-registry.js';
+import { applySuggestion, navigateHistoryDown, navigateHistoryUp } from '../palette-logic.js';
 
 const MAX_VISIBLE_SUGGESTIONS = 6;
-
-function applySuggestion(value: string, suggestion: string): string {
-  const endsWithSpace = value.length === 0 || /\s$/.test(value);
-  if (endsWithSpace) return `${value}${suggestion} `;
-  const idx = value.lastIndexOf(' ');
-  const prefix = idx === -1 ? '' : value.slice(0, idx + 1);
-  return `${prefix}${suggestion} `;
-}
 
 export interface ExecutedCommand {
   command: string;
@@ -90,16 +83,10 @@ export default function CommandPalette({
         setSelectedSuggestion((i) => (i === null ? suggestions.length - 1 : Math.max(0, i - 1)));
         return;
       }
-      if (history.length === 0) return;
-      if (historyIndex === null) {
-        setDraft(value);
-        setHistoryIndex(history.length - 1);
-        setValue(history[history.length - 1]!);
-      } else {
-        const next = Math.max(0, historyIndex - 1);
-        setHistoryIndex(next);
-        setValue(history[next]!);
-      }
+      const next = navigateHistoryUp(history, { value, historyIndex, draft });
+      setValue(next.value);
+      setHistoryIndex(next.historyIndex);
+      setDraft(next.draft);
       return;
     }
 
@@ -108,15 +95,10 @@ export default function CommandPalette({
         setSelectedSuggestion((i) => (i === null ? null : Math.min(suggestions.length - 1, i + 1)));
         return;
       }
-      if (historyIndex === null) return;
-      if (historyIndex >= history.length - 1) {
-        setHistoryIndex(null);
-        setValue(draft);
-      } else {
-        const next = historyIndex + 1;
-        setHistoryIndex(next);
-        setValue(history[next]!);
-      }
+      const next = navigateHistoryDown(history, { value, historyIndex, draft });
+      setValue(next.value);
+      setHistoryIndex(next.historyIndex);
+      setDraft(next.draft);
       return;
     }
 
