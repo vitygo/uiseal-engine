@@ -148,6 +148,16 @@ Run `uiseal` without arguments to open the interactive terminal UI:
 - Open any violation directly in your editor
 - Manage baselines to track regressions over time
 
+### Command palette
+
+Press `:` on the home screen to open a command palette, like a vim command line. Type a command with flags — `check --fix --dry-run`, `drift --source tailwind --json`, `baseline update` — and press Enter to run it without leaving the TUI. It complements the menu, not replaces it: arrow keys and `/` fuzzy-search still work exactly as before.
+
+- Autocomplete suggests command names, flags for the command you're typing, and flag values for enum flags (`--format pretty|json|sarif`, `--source tailwind|css-vars|code-scan`, `--from tailwind|css-vars|code`). `Tab` or `Enter` on a highlighted suggestion inserts it; `Enter` with nothing highlighted runs the command.
+- `↑`/`↓` navigate suggestions when any are showing, otherwise they recall the last 10 commands you ran from the palette this session (not persisted across restarts).
+- `Esc` closes the palette and returns to the menu.
+
+Example: press `:` then type `check --fix --dry-run` and hit Enter to preview fixes without leaving the TUI.
+
 ## Config
 
 ```json
