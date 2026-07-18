@@ -12,13 +12,22 @@ import { parseLess } from './less.js';
 import { parseVue, type VueParsedFile } from './vue.js';
 import { parseAngular, type AngularParsedFile } from './angular.js';
 import { parseSvelte, type SvelteParsedFile } from './svelte.js';
+import {
+  parseHtmlTemplate,
+  BLADE_DIALECT,
+  JINJA2_DIALECT,
+  ERB_DIALECT,
+  TWIG_DIALECT,
+  type HtmlTemplateParsedFile,
+} from './html-template.js';
 
 export type ParsedFile =
   | { kind: 'css'; root: Root }
   | { kind: 'jsx'; ast: TSESTree.Program }
   | VueParsedFile
   | AngularParsedFile
-  | SvelteParsedFile;
+  | SvelteParsedFile
+  | HtmlTemplateParsedFile;
 
 export interface ParserEntry {
   id: string;
@@ -104,6 +113,44 @@ const registry: ParserEntry[] = [
     extensions: ['svelte'],
     parse(source: string): ParsedFile {
       return parseSvelte(source);
+    },
+  },
+  {
+    id: 'html-template-blade',
+    extensions: [],
+    // Not a bare .php extension — that would scan every PHP file in a
+    // Laravel project (controllers, models, ...) for zero benefit on files
+    // that aren't Blade views.
+    suffixes: ['blade.php'],
+    parse(source: string): ParsedFile {
+      return parseHtmlTemplate(source, BLADE_DIALECT);
+    },
+  },
+  {
+    id: 'html-template-jinja2',
+    // .j2/.jinja2 are unambiguous — unlike bare .html (which could be
+    // Jinja2 or just static HTML, including build output), so bare .html
+    // is intentionally NOT registered here.
+    extensions: ['j2', 'jinja2'],
+    parse(source: string): ParsedFile {
+      return parseHtmlTemplate(source, JINJA2_DIALECT);
+    },
+  },
+  {
+    id: 'html-template-erb',
+    // extOf() takes the LAST dot-separated segment, so this also matches
+    // the common Rails `*.html.erb` naming — no separate suffix entry needed.
+    extensions: ['erb'],
+    parse(source: string): ParsedFile {
+      return parseHtmlTemplate(source, ERB_DIALECT);
+    },
+  },
+  {
+    id: 'html-template-twig',
+    // Same reasoning as .erb above — covers both *.twig and *.html.twig.
+    extensions: ['twig'],
+    parse(source: string): ParsedFile {
+      return parseHtmlTemplate(source, TWIG_DIALECT);
     },
   },
 ];
