@@ -158,6 +158,44 @@ describe('analyzeDrift — Tailwind source', () => {
   });
 });
 
+describe('analyzeDrift — Style Dictionary / DTCG tokens source', () => {
+  it('computes drift against a live tokens.json (DTCG format)', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'tokens.json'),
+      JSON.stringify({
+        color: {
+          $type: 'color',
+          primary: { $value: '#02c39a' },
+          danger: { $value: '#f87171' },
+        },
+        spacing: {
+          $type: 'dimension',
+          sm: { $value: '8px' },
+          md: { $value: '16px' },
+        },
+      }),
+    );
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'Button.tsx'),
+      "export const Button = () => <button style={{ color: '#02c39a', padding: '16px' }} />;", // on-token
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'Alert.tsx'),
+      "export const Alert = () => <div style={{ color: '#ff00aa', padding: '13px' }} />;", // off-token
+    );
+
+    const report = await analyzeDrift({ cwd: tmpDir, sourceId: 'tokens' });
+
+    expect(report.source.id).toBe('tokens');
+    expect(report.categories.colors.tokensInSource).toBe(2);
+    expect(report.categories.colors.driftedValues.map((v) => v.value)).toEqual(['#ff00aa']);
+    expect(report.categories.colors.unusedTokens).toEqual(['color-danger']);
+    expect(report.categories.spacing.tokensInSource).toBe(2);
+    expect(report.categories.spacing.driftedValues[0]!.nearestToken).toBe('16px');
+  });
+});
+
 describe('analyzeDrift — error handling', () => {
   it('throws a helpful error when no source is detected', async () => {
     // An empty dir with no tailwind/css-vars file still has code-scan as a

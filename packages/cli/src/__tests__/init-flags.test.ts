@@ -56,6 +56,14 @@ describe('uiseal init --from', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it('errors when --from tokens is requested but no design token file exists', () => {
+    tmpDir = freshTmpDir();
+    const result = runInit(['--from', 'tokens'], tmpDir);
+    expect(result.status).toBe(1);
+    expect(result.stdout + result.stderr).toContain('No Design tokens');
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it('still refuses to overwrite an existing config without --force, regardless of --from', () => {
     tmpDir = freshTmpDir();
     fs.writeFileSync(path.join(tmpDir, 'uiseal.config.json'), '{}');
