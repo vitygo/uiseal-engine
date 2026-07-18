@@ -4,7 +4,7 @@ Deterministic design-system linter for human and AI-generated code.
 
 ## What it is
 
-uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, JSX, Vue (.vue), Angular (.component.ts), and Svelte (.svelte) files and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
+uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, JSX, Vue (.vue), Angular (.component.ts), Svelte (.svelte), and backend templates — Blade, Jinja2, ERB, Twig — and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
 
 ## Install
 
@@ -300,6 +300,28 @@ A `.svelte` file's `<style>` block (including `lang="scss"`/`lang="less"`) and m
 **What's NOT checked:** `<script>` content, and any dynamic binding (`style:color={expr}`, `style={expr}`, `class={expr}`) — only literal string values are statically known.
 
 **Usage:** no separate flag or setup — `.svelte` is in the glob `uiseal check`/`uiseal init` already scan; `--fix` rewrites both `<style>` CSS values and template Tailwind classes/directives in the same pass.
+
+## Backend template support
+
+Laravel Blade, Jinja2, Rails ERB, and Twig — all four dialects are HTML with embedded template syntax (`{{ }}`, `{% %}`, `<% %>`, `@directive`), checked by one shared parser: a regex-based tag/attribute scan (the same proven approach as Angular's external `.component.html` templates), not a real template-engine parser.
+
+| Extension | Engine | Ecosystem |
+|-----------|--------|-----------|
+| `.blade.php` | Blade | Laravel (PHP) |
+| `.j2`, `.jinja2` | Jinja2 | Flask/Django (Python) |
+| `.erb`, `.html.erb` | ERB | Rails (Ruby) |
+| `.twig`, `.html.twig` | Twig | Symfony (PHP) |
+
+**How template tags are handled:** every non-newline character inside a matched template tag ( `{{ $var }}`, `{% if %}`, `<%= expr %>`, `@if(...)`, ...) is replaced with a single space before the file is scanned — not parsed, not evaluated, just neutralized. This keeps every position in the file exactly where it was (same length, same newlines), so:
+- a template expression embedded in `class="px-4 {{ $dynamic }} mt-[13px]"` collapses to whitespace, which splits cleanly around it — `mt-[13px]` still gets checked, `$dynamic` never does;
+- a template expression embedded in a `style="color: {{ $color }}"` value produces a CSS value uiseal can't classify, so it's silently skipped, never a false positive;
+- violation line numbers always match the real, un-neutralized file — including when the violation sits inside a stripped `@if`/`{% if %}`/`<% if %>` block.
+
+**What's checked:** static `class="..."` and `style="..."` attributes — Tailwind arbitrary values and CSS declarations, same detection as every other supported file type. **What's NOT checked:** template-engine logic itself (`@foreach`, `{% for %}`, Ruby/PHP/Python code inside `<% %>`/`{{ }}`) — only the literal, static portions of attribute values.
+
+**Known limitation:** bare `.html` is intentionally **not** registered — it's ambiguous (could be a Jinja2 template, or just static/build-output HTML you don't want scanned). Rename Jinja2 templates to `.j2`/`.jinja2`, or use one of the other three engines' conventional extensions, which are unambiguous.
+
+**Usage:** no separate flag or setup — install uiseal in your Laravel/Django/Rails/Symfony project, run `uiseal init`, then `uiseal check` (or `uiseal watch` while developing) — template files are picked up automatically by extension. `--fix` rewrites Tailwind classes and CSS values in template files exactly like any other file type, leaving template tags untouched.
 
 ## Packages
 
