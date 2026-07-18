@@ -54,7 +54,11 @@ if (!hasKnownCommand && requestedFix && process.stdin.isTTY === true && process.
     if (!pendingCommand) break; // user pressed q / Ctrl-C
 
     const cmd = (pendingCommand as string[])[0] ?? '';
-    const isSetupCmd = cmd === 'init' || cmd === 'install-hooks' || cmd === 'watch';
+    // 'check' only reaches here via the command palette (with args/flags the
+    // in-TUI Scanning screen can't run) — loop back into the TUI afterward,
+    // same as the other setup/one-shot commands, instead of exiting.
+    const isSetupCmd =
+      cmd === 'init' || cmd === 'install-hooks' || cmd === 'watch' || cmd === 'check';
 
     const proc = spawn(process.execPath, [process.argv[1]!, ...(pendingCommand as string[])], {
       stdio: 'inherit',

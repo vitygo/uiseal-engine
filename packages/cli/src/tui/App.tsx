@@ -55,19 +55,26 @@ export default function App({ onLaunchCommand }: AppProps) {
   const { exit } = useApp();
   const [screen, setScreen] = useState<Screen>('home');
   const [activeCommand, setActiveCommand] = useState('');
+  const [activeArgs, setActiveArgs] = useState<string[]>([]);
   const [results, setResults] = useState<CheckResult | null>(null);
   const [commandTitle, setCommandTitle] = useState('');
   const [commandOutput, setCommandOutput] = useState('');
   const [commandLoading, setCommandLoading] = useState(false);
   const [initConfirmPath, setInitConfirmPath] = useState('');
+  const [pendingInitArgs, setPendingInitArgs] = useState<string[]>([]);
+  const [paletteHistory, setPaletteHistory] = useState<string[]>([]);
   const runningProcRef = useRef<ChildProcess | null>(null);
+
+  const recordPaletteHistory = (line: string) => {
+    setPaletteHistory((h) => [...h, line].slice(-10));
+  };
 
   useEffect(() => {
     if (screen === 'launching' && activeCommand) {
-      onLaunchCommand([activeCommand]);
+      onLaunchCommand([activeCommand, ...activeArgs]);
       exit();
     }
-  }, [screen, activeCommand]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [screen, activeCommand, activeArgs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runInlineCommand = (title: string, args: string[]) => {
     if (runningProcRef.current) {
@@ -99,29 +106,75 @@ export default function App({ onLaunchCommand }: AppProps) {
     });
   };
 
-  const handleRun = (cmd: string) => {
-    if (cmd === 'check') {
-      setActiveCommand(cmd);
-      setScreen('scanning');
-    } else if (cmd === 'baseline') {
-      setScreen('baseline-menu');
+  const handleRun = (cmd: string, args: string[] = []) => {
+    // Bare menu/palette selections (no arguments) keep the exact in-TUI flow
+    // each command already had. Commands invoked from the palette WITH
+    // arguments can't use those in-TUI flows (Scanning ignores flags,
+    // DiffInput/BaselineMenu only prompt for what the flow itself needs) so
+    // they're dispatched directly instead.
+    if (args.length === 0) {
+      if (cmd === 'check') {
+        setActiveCommand(cmd);
+        setActiveArgs([]);
+        setScreen('scanning');
+      } else if (cmd === 'baseline') {
+        setScreen('baseline-menu');
+      } else if (cmd === 'diff') {
+        setScreen('diff-input');
+      } else if (cmd === 'drift') {
+        runInlineCommand('drift', ['drift']);
+      } else if (cmd === 'init') {
+        const candidates = ['uiseal.config.json', 'uiseal.config.ts'];
+        const existing = candidates.find((f) => existsSync(join(process.cwd(), f)));
+        if (existing) {
+          setInitConfirmPath(join(process.cwd(), existing));
+          setPendingInitArgs([]);
+          setScreen('init-confirm');
+        } else {
+          setActiveCommand(cmd);
+          setActiveArgs([]);
+          setScreen('launching');
+        }
+      } else {
+        // install-hooks: needs full terminal control — exit TUI
+        setActiveCommand(cmd);
+        setActiveArgs([]);
+        setScreen('launching');
+      }
+      return;
+    }
+
+    if (cmd === 'baseline') {
+      runInlineCommand(`baseline ${args.join(' ')}`, ['baseline', ...args]);
     } else if (cmd === 'diff') {
-      setScreen('diff-input');
+      runInlineCommand(`diff ${args.join(' ')}`, ['diff', ...args]);
     } else if (cmd === 'drift') {
-      runInlineCommand('drift', ['drift']);
+      runInlineCommand(`drift ${args.join(' ')}`, ['drift', ...args]);
     } else if (cmd === 'init') {
+      const hasForce = args.includes('--force') || args.includes('-f');
+      if (hasForce) {
+        setActiveCommand(cmd);
+        setActiveArgs(args);
+        setScreen('launching');
+        return;
+      }
       const candidates = ['uiseal.config.json', 'uiseal.config.ts'];
       const existing = candidates.find((f) => existsSync(join(process.cwd(), f)));
       if (existing) {
         setInitConfirmPath(join(process.cwd(), existing));
+        setPendingInitArgs(args);
         setScreen('init-confirm');
       } else {
         setActiveCommand(cmd);
+        setActiveArgs(args);
         setScreen('launching');
       }
     } else {
-      // install-hooks: needs full terminal control — exit TUI
+      // check (with path/flags), install-hooks, watch: Scanning can't take
+      // flags and these may need real terminal control (--fix writes files,
+      // watch takes over stdin) — run non-interactively via onLaunchCommand.
       setActiveCommand(cmd);
+      setActiveArgs(args);
       setScreen('launching');
     }
   };
@@ -143,7 +196,7 @@ export default function App({ onLaunchCommand }: AppProps) {
   if (screen === 'launching') {
     return (
       <Box paddingX={2} paddingY={1}>
-        <Text color="#666666">Launching uiseal {activeCommand}…</Text>
+        <Text color="#666666">Launching uiseal {[activeCommand, ...activeArgs].join(' ')}…</Text>
       </Box>
     );
   }
@@ -153,7 +206,7 @@ export default function App({ onLaunchCommand }: AppProps) {
       <InitConfirm
         path={initConfirmPath}
         onForce={() => {
-          onLaunchCommand(['init', '--force']);
+          onLaunchCommand(['init', '--force', ...pendingInitArgs]);
           exit();
         }}
         onBack={handleBack}
@@ -202,5 +255,12 @@ export default function App({ onLaunchCommand }: AppProps) {
     return <Results result={results!} onBack={handleBack} onQuit={exit} />;
   }
 
-  return <Home onRun={handleRun} onQuit={exit} />;
+  return (
+    <Home
+      onRun={handleRun}
+      onQuit={exit}
+      paletteHistory={paletteHistory}
+      onPaletteHistoryRecord={recordPaletteHistory}
+    />
+  );
 }

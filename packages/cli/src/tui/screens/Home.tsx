@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import Stars from '../components/Stars.js';
 import Banner from '../components/Banner.js';
+import CommandPalette from '../components/CommandPalette.js';
 
 const VERSION = '0.1.2';
 
@@ -48,15 +49,18 @@ const MENU_ITEMS: MenuItem[] = [
 ];
 
 interface HomeProps {
-  onRun: (command: string) => void;
+  onRun: (command: string, args?: string[]) => void;
   onQuit: () => void;
+  paletteHistory: string[];
+  onPaletteHistoryRecord: (line: string) => void;
 }
 
-export default function Home({ onRun, onQuit }: HomeProps) {
+export default function Home({ onRun, onQuit, paletteHistory, onPaletteHistoryRecord }: HomeProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const { columns } = useWindowSize();
 
   const filteredItems = useMemo(() => {
@@ -102,10 +106,12 @@ export default function Home({ onRun, onQuit }: HomeProps) {
       setSearchMode(true);
       setSearchQuery('');
       setSelectedIndex(0);
+    } else if (input === ':') {
+      setPaletteOpen(true);
     } else if (input === 'd' && !bannerDismissed) {
       setBannerDismissed(true);
     }
-  });
+  }, { isActive: !paletteOpen });
 
   const safeIndex = Math.min(
     selectedIndex,
@@ -214,12 +220,24 @@ export default function Home({ onRun, onQuit }: HomeProps) {
         )}
       </Box>
 
-      {/* Footer */}
-      <Box>
-        <Text color="#2a2a2a">
-          ↑↓ navigate  ↵ run  / search  q quit  d dismiss banner
-        </Text>
-      </Box>
+      {/* Command palette / footer */}
+      {paletteOpen ? (
+        <CommandPalette
+          history={paletteHistory}
+          onHistoryRecord={onPaletteHistoryRecord}
+          onExecute={({ command, args }) => {
+            setPaletteOpen(false);
+            onRun(command, args);
+          }}
+          onCancel={() => setPaletteOpen(false)}
+        />
+      ) : (
+        <Box>
+          <Text color="#2a2a2a">
+            ↑↓ navigate  ↵ run  / search  : command  q quit  d dismiss banner
+          </Text>
+        </Box>
+      )}
     </Box>
   );
 }
