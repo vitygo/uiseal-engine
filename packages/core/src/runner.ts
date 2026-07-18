@@ -14,7 +14,8 @@ import {
   extractSvelteClassSegments,
 } from './svelte/template-adapter.js';
 import { extractAngularInlineStyleDecls, extractAngularClassSegments } from './angular/template-adapter.js';
-import { objectExpressionToDecls } from './adapters/object-expr-to-decls.js';
+import type { HtmlTemplateParsedFile, TemplateAttribute } from './parsers/html-template.js';
+import { objectExpressionToDecls, makeSyntheticDecl } from './adapters/object-expr-to-decls.js';
 import { walkVueTemplate, extractVueInlineStyleDecls, extractVueClassSegments } from './vue/template-adapter.js';
 import { checkClassStringForArbitraryValues } from './rules/no-tailwind-arbitrary.js';
 import { buildCssIgnoreMap, buildJsxIgnoreMap, applyIgnoreMap } from './ignore.js';
@@ -136,6 +137,8 @@ export function analyzeFile(filePath: string, code: string, config: uisealConfig
       : []; // not an Angular component — nothing to check
   } else if (parsed.kind === 'svelte') {
     violations = analyzeSvelte(filePath, parsed, config, rules, definedTokens, usedVarRefs, spacingUsages);
+  } else if (parsed.kind === 'html-template') {
+    violations = analyzeHtmlTemplate(filePath, parsed, config, rules, usedVarRefs);
   } else {
     violations = [];
   }
@@ -536,6 +539,59 @@ function analyzeSvelte(
         }
       }
     });
+  }
+
+  return violations;
+}
+
+// Backend template files (Blade, Jinja2, ERB, Twig): html-template.ts has
+// already done the tag/attribute scan and template-tag neutralization at
+// parse time, so this just runs the same checks Angular/Vue run on their
+// inline style="..."/[ngStyle]/:style bindings — synthetic Declaration
+// objects for style attributes, checkClassStringForArbitraryValues for
+// class attributes — using the shared tag position (line/column) precedent
+// (see html-template.ts's TemplateAttribute doc comment). Like those inline
+// bindings, this doesn't feed spacingUsages/definedTokens — only real CSS
+// declaration BLOCKS (analyzeCss) do; there's no :root-equivalent in an
+// HTML template attribute.
+function analyzeHtmlTemplate(
+  filePath: string,
+  parsed: HtmlTemplateParsedFile,
+  config: uisealConfig,
+  rules: Rule[],
+  usedVarRefs: Set<string>,
+): Violation[] {
+  const violations: Violation[] = [];
+  const cssRules = rules.filter((r) => r.checkCssDeclaration !== undefined);
+  const tailwindRule = rules.find((r) => r.id === 'no-tailwind-arbitrary');
+  const tailwindSeverity = tailwindRule ? effectiveSeverity(tailwindRule, config) : 'off';
+
+  function checkStyleAttribute(attr: TemplateAttribute): void {
+    const pos = { line: attr.line, column: attr.column };
+    for (const part of attr.value.split(';')) {
+      const colonIdx = part.indexOf(':');
+      if (colonIdx === -1) continue;
+      const cssProp = part.slice(0, colonIdx).trim();
+      const cssValue = part.slice(colonIdx + 1).trim();
+      if (!cssProp || !cssValue) continue;
+      const decl = makeSyntheticDecl(cssProp, cssValue, pos);
+      for (const rule of cssRules) {
+        const sev = effectiveSeverity(rule, config);
+        if (sev === 'off') continue;
+        const ctx = makeContext(filePath, config, violations, sev);
+        rule.checkCssDeclaration!(decl, ctx);
+      }
+      for (const name of extractVarRefs(decl.value)) usedVarRefs.add(name);
+    }
+  }
+
+  for (const attr of parsed.styleAttributes) checkStyleAttribute(attr);
+
+  if (tailwindSeverity !== 'off') {
+    for (const attr of parsed.classAttributes) {
+      const ctx = makeContext(filePath, config, violations, tailwindSeverity);
+      checkClassStringForArbitraryValues(attr.value, { line: attr.line, column: attr.column }, ctx);
+    }
   }
 
   return violations;
