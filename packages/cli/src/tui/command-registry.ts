@@ -159,36 +159,70 @@ function suggestFlagsOrValues(region: string[], endsWithSpace: boolean, flags: F
   return [];
 }
 
-export function getCompletions(input: string): string[] {
+export interface SuggestionEntry {
+  value: string;
+  description: string;
+  kind: 'command' | 'subcommand' | 'flag' | 'value';
+}
+
+export function getSuggestionEntries(input: string): SuggestionEntry[] {
   const endsWithSpace = input.length === 0 || /\s$/.test(input);
   const tokens = input.trim().split(/\s+/).filter(Boolean);
 
   if (tokens.length === 0) {
-    return COMMANDS.map((c) => c.name);
+    return COMMANDS.map((c) => ({ value: c.name, description: c.description, kind: 'command' }));
   }
 
   if (tokens.length === 1 && !endsWithSpace) {
     const prefix = tokens[0]!;
-    return COMMANDS.filter((c) => c.name.startsWith(prefix)).map((c) => c.name);
+    return COMMANDS.filter((c) => c.name.startsWith(prefix)).map((c) => ({
+      value: c.name,
+      description: c.description,
+      kind: 'command',
+    }));
   }
 
   const command = COMMANDS.find((c) => c.name === tokens[0]);
   if (!command) return [];
 
+  let flags: FlagDef[];
+  let region: string[];
+
   if (command.subcommands) {
     if (tokens.length === 1 && endsWithSpace) {
-      return command.subcommands.map((s) => s.name);
+      return command.subcommands.map((s) => ({ value: s.name, description: s.description, kind: 'subcommand' }));
     }
     if (tokens.length === 2 && !endsWithSpace) {
       const prefix = tokens[1]!;
-      return command.subcommands.filter((s) => s.name.startsWith(prefix)).map((s) => s.name);
+      return command.subcommands
+        .filter((s) => s.name.startsWith(prefix))
+        .map((s) => ({ value: s.name, description: s.description, kind: 'subcommand' }));
     }
     const subcommand = command.subcommands.find((s) => s.name === tokens[1]);
     if (!subcommand) return [];
-    return suggestFlagsOrValues(tokens.slice(2), endsWithSpace, subcommand.flags);
+    flags = subcommand.flags;
+    region = tokens.slice(2);
+  } else {
+    flags = command.flags;
+    region = tokens.slice(1);
   }
 
-  return suggestFlagsOrValues(tokens.slice(1), endsWithSpace, command.flags);
+  const names = suggestFlagsOrValues(region, endsWithSpace, flags);
+  if (names.length > 0 && names[0]!.startsWith('-')) {
+    return names.map((n) => ({
+      value: n,
+      description: flags.find((f) => f.name === n)?.description ?? '',
+      kind: 'flag',
+    }));
+  }
+
+  const effectiveLen = endsWithSpace ? region.length : Math.max(0, region.length - 1);
+  const { pendingValueFlag } = walkFlagRegion(region.slice(0, effectiveLen), flags);
+  return names.map((n) => ({ value: n, description: pendingValueFlag?.description ?? '', kind: 'value' }));
+}
+
+export function getCompletions(input: string): string[] {
+  return getSuggestionEntries(input).map((e) => e.value);
 }
 
 export interface ParsedCommandLine {
