@@ -35,7 +35,7 @@ export const COMMANDS: CommandDef[] = [
     description: 'Initialize uiseal.config.json',
     flags: [
       { name: '--force', alias: '-f', description: 'Overwrite an existing config file', type: 'boolean' },
-      { name: '--from', description: 'Token source to use (default: auto-detect)', type: 'string', values: ['tailwind', 'css-vars', 'code'] },
+      { name: '--from', description: 'Token source to use (default: auto-detect)', type: 'string', values: ['tailwind', 'tokens', 'css-vars', 'code'] },
     ],
   },
   {
@@ -74,7 +74,7 @@ export const COMMANDS: CommandDef[] = [
     name: 'drift',
     description: 'Detect drift between token source and code',
     flags: [
-      { name: '--source', description: 'Token source (default: auto-detect)', type: 'string', values: ['tailwind', 'css-vars', 'code-scan'] },
+      { name: '--source', description: 'Token source (default: auto-detect)', type: 'string', values: ['tailwind', 'tokens', 'css-vars', 'code-scan'] },
       { name: '--config', alias: '-c', description: 'Directory to resolve the project from', type: 'string' },
       { name: '--json', description: 'Output the drift report as JSON (for CI/scripting)', type: 'boolean' },
       { name: '--verbose', description: 'Show every drifted value, not just the top ones', type: 'boolean' },

@@ -45,11 +45,11 @@ describe('getCompletions', () => {
   });
 
   it('suggests --from values for init', () => {
-    expect(getCompletions('init --from ')).toEqual(['tailwind', 'css-vars', 'code']);
+    expect(getCompletions('init --from ')).toEqual(['tailwind', 'tokens', 'css-vars', 'code']);
   });
 
   it('suggests --source values for drift', () => {
-    expect(getCompletions('drift --source ')).toEqual(['tailwind', 'css-vars', 'code-scan']);
+    expect(getCompletions('drift --source ')).toEqual(['tailwind', 'tokens', 'css-vars', 'code-scan']);
   });
 
   it('returns empty for an unknown command', () => {

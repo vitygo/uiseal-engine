@@ -152,7 +152,7 @@ Run `uiseal` without arguments to open the interactive terminal UI:
 
 Press `:` on the home screen to open a command palette, like a vim command line. Type a command with flags — `check --fix --dry-run`, `drift --source tailwind --json`, `baseline update` — and press Enter to run it without leaving the TUI. It complements the menu, not replaces it: arrow keys and `/` fuzzy-search still work exactly as before.
 
-- Autocomplete suggests command names, flags for the command you're typing, and flag values for enum flags (`--format pretty|json|sarif`, `--source tailwind|css-vars|code-scan`, `--from tailwind|css-vars|code`). `Tab` or `Enter` on a highlighted suggestion inserts it; `Enter` with nothing highlighted runs the command.
+- Autocomplete suggests command names, flags for the command you're typing, and flag values for enum flags (`--format pretty|json|sarif`, `--source tailwind|tokens|css-vars|code-scan`, `--from tailwind|tokens|css-vars|code`). `Tab` or `Enter` on a highlighted suggestion inserts it; `Enter` with nothing highlighted runs the command.
 - `↑`/`↓` navigate suggestions when any are showing, otherwise they recall the last 10 commands you ran from the palette this session (not persisted across restarts).
 - `Esc` closes the palette and returns to the menu.
 
@@ -188,12 +188,26 @@ Three seams keep `@uiseal/core` from growing copy-pasted dispatch logic as it ad
 | Source | id | Confidence | Reads |
 |--------|----|-----------|-------|
 | Tailwind CSS config | `tailwind` | 0.9 | `tailwind.config.{js,cjs,mjs,ts}` — `theme`/`theme.extend`, flattening nested color scales and converting rem/em to px |
+| Design tokens (Style Dictionary / W3C DTCG) | `tokens` | 0.85 | `tokens.json`, `design-tokens.json`, `*.tokens.json`, a `tokens/`/`design-tokens/` directory of `*.json` files, or files matched by a `style-dictionary.config.json`'s `source` glob — see below |
 | CSS variables | `css-vars` | 0.8 | The most-populated `:root { --* }` (CSS) or top-level `$var` (SCSS) file among common names/locations (`variables.css`, `tokens.css`, `theme.css`, …, in the project root, `src/`, `src/styles/`, `styles/`, …) |
 | Scan existing code | `code-scan` | 0.1 | Repeated values across your `.css`/`.scss`/`.less`/`.tsx`/`.jsx` files — the original `init` behavior, kept as the fallback when nothing more authoritative is detected |
 
-`uiseal init` runs every registered source's `detect()` and uses the highest-confidence match automatically; if more than one real source is found, it asks which one is the source of truth. Pass `--from <tailwind|css-vars|code>` to skip detection and pick one explicitly.
+`uiseal init` runs every registered source's `detect()` and uses the highest-confidence match automatically; if more than one real source is found, it asks which one is the source of truth. Pass `--from <tailwind|tokens|css-vars|code>` to skip detection and pick one explicitly.
 
-Adding a new source (e.g. Style Dictionary) is a one-file task: implement `TokenSource` in a new file under `packages/core/src/sources/`, then add it to the array in `sources/registry.ts`. `TokenSource`, `SourceTokens`, `DetectResult`, and `detectSources()`/`getAllSources()`/`getSourceById()` are all exported from `@uiseal/core`.
+Adding a new source is a one-file task: implement `TokenSource` in a new file under `packages/core/src/sources/`, then add it to the array in `sources/registry.ts`. `TokenSource`, `SourceTokens`, `DetectResult`, and `detectSources()`/`getAllSources()`/`getSourceById()` are all exported from `@uiseal/core`.
+
+### Style Dictionary / W3C DTCG token source
+
+[Style Dictionary](https://amzn.github.io/style-dictionary/) (Salesforce's open-source build tool) and the [W3C Design Tokens Community Group](https://tr.designtokens.org/format/) format it's converging toward are close enough to read with one parser: at every node, uiseal prefers the DTCG `$value`/`$type`/`$description` keys and falls back to Style Dictionary v3's plain `value`/`type` — no format flag or config needed, and a project can mix both across files.
+
+- **Type inheritance**: a group's `$type` (e.g. `"spacing": { "$type": "dimension", ... }`) is inherited by every descendant token that doesn't declare its own `$type`, per the DTCG spec. A token with no `$type` anywhere in its ancestry is skipped rather than guessed.
+- **Alias resolution**: `{group.token}` references are resolved by dot-path lookup against the full token tree (merged across all discovered files, so a token in one file can alias one in another), following chained aliases. A reference that points nowhere, or a circular chain, is skipped rather than crashing the extraction.
+- **Dimension categorization**: DTCG's `"dimension"` type covers spacing, font size, and radius alike — uiseal categorizes by the token's own path, checked in this order: `spacing`/`space`/`gap`/`margin`/`padding`/`inset` → spacing; `font`/`text`/`fs`/`size` → font sizes; `radius`/`round`/`corner`/`border-radius` → radii; anything else defaults to spacing. `rem`/`em` values are converted to px (16px root).
+- Token names come from their path (`color.neutral.100` → `color-neutral-100`); `fontWeight`, `duration`, `cubicBezier`, `number`, and other non-visual `$type`s are read but not mapped to a uiseal category.
+
+**Usage:** `uiseal init --from tokens` / `uiseal drift --source tokens`.
+
+**Known limitations:** JSON only — a `.json5`-named file is still detected but its content must still parse as plain JSON (comments/trailing commas aren't supported); a `style-dictionary.config.js` (as opposed to `.json`) isn't read for its `source` path; an ambiguous dimension with none of the categorization keywords above defaults to spacing rather than being skipped.
 
 ## Drift detection
 
