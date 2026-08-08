@@ -1,6 +1,6 @@
 {
   "name": "@uiseal/cli",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "CLI and interactive TUI for uiseal — design-system enforcement for AI-generated code. Checks CSS, JSX, Vue, Angular, Svelte, and backend templates against your design tokens.",
   "keywords": [
     "design-system",
