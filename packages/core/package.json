@@ -1,6 +1,27 @@
 {
   "name": "@uiseal/core",
   "version": "0.1.6",
+  "description": "Design-system enforcement engine for AI-generated code — parses CSS, SCSS, LESS, JSX, Vue, Angular, Svelte, and backend templates and checks them against your design tokens.",
+  "keywords": [
+    "design-system",
+    "linter",
+    "static-analysis",
+    "tokens",
+    "design-tokens",
+    "css",
+    "scss",
+    "less",
+    "tailwind",
+    "tailwindcss",
+    "vue",
+    "angular",
+    "svelte",
+    "react",
+    "accessibility",
+    "a11y",
+    "drift",
+    "sarif"
+  ],
   "license": "Elastic-2.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +41,7 @@
     "type": "git",
     "url": "https://github.com/vitygo/uiseal-engine"
   },
-  "homepage": "https://github.com/vitygo/uiseal-engine#readme",
+  "homepage": "https://uiseal.io",
   "bugs": {
     "url": "https://github.com/vitygo/uiseal-engine/issues"
   },

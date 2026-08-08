@@ -1,68 +1,188 @@
 # uiseal
 
-Deterministic design-system linter for human and AI-generated code.
+[![npm version](https://img.shields.io/npm/v/%40uiseal%2Fcli)](https://www.npmjs.com/package/@uiseal/cli)
+[![license](https://img.shields.io/badge/license-Elastic--2.0-blue)](./LICENSE)
+[![tests](https://img.shields.io/badge/tests-862%20passing-brightgreen)](#)
 
-## What it is
-
-uiseal is an AST-based static analysis tool that catches design token violations before they ship. It parses CSS, SCSS, LESS, TSX, JSX, Vue (.vue), Angular (.component.ts), Svelte (.svelte), and backend templates — Blade, Jinja2, ERB, Twig — and enforces your design system's rules — hardcoded colors, arbitrary spacing, unauthorized fonts — the same way ESLint enforces code style. Integrates with the CLI, VSCode, and GitHub Actions.
-
-## Install
+**Design system enforcement for AI-generated code.** uiseal checks your CSS, JSX, Vue, Angular, Svelte, and backend templates against your design tokens — hardcoded colors, arbitrary spacing, unauthorized fonts, accessibility gaps, and more — the same way ESLint enforces code style. One engine, any stack, runs entirely on your machine.
 
 ```sh
 npm install -g @uiseal/cli
 ```
 
-## Usage
+## Why
 
-```sh
-uiseal          # interactive TUI — browse results by file, category, rule
-uiseal check    # CI-friendly CLI output with exit code
-uiseal init     # generate uiseal.config.json — auto-detects Tailwind/CSS
-                # variables and offers them as the token source, falling
-                # back to scanning your code if neither is present
-uiseal init --from tailwind  # explicitly generate from tailwind.config.*
-uiseal init --from css-vars  # explicitly generate from a CSS/SCSS variables file
-uiseal init --from code      # explicitly scan source code (today's behavior)
-uiseal drift    # compare the LIVE token source against the LIVE code — see below
-uiseal watch    # live incremental re-scan as files change — see below
+AI coding tools write plausible-looking UI code fast, and "plausible-looking" is exactly the failure mode a design system can't catch by eye: a `#1a73e8` instead of `var(--color-primary)`, a `13px` gap next to a scale that only has `8/16/24`, a `<div onClick>` where a `<button>` belongs. None of it breaks the build. All of it accumulates. uiseal is a static analysis pass that catches this before it ships — in your editor via `watch`, in a pre-commit hook, or as a CI gate.
+
+```
+  src/Button.tsx
+    2:16
+      error  Hardcoded color "#1a73e8" in "color". Did you mean var(--color-primary)?  [no-hardcoded-color]
+      fix: var(--color-primary)
+    4:10
+      warn   Margin "13px" is not on the spacing scale. Nearest: 16px  [no-arbitrary-spacing]
+      fix: 16px
+    7:3
+      error  <div onClick> used as a button — not keyboard accessible  [no-div-button]
+
+✖  2 errors, 1 warning in 1 file
 ```
 
-## Watch mode
+- Deterministic, AST-based static analysis — no LLM calls, no false positives from misread context
+- Suggests (and can apply) fixes: the nearest on-token color, spacing, font-size, or radius value
+- Runs entirely locally — your source never leaves your machine
 
-`uiseal watch` re-scans incrementally: it does one full initial scan, then re-analyzes only the file(s) that actually changed on every save, instead of re-scanning the whole project. On a project with hundreds of files, that's the difference between an update landing in well under 100ms and a multi-second full rescan on every keystroke-adjacent save — which matters most when an AI tool is generating or editing code and files are changing every few seconds.
+## Quick start
 
 ```sh
-uiseal watch                       # watch the current directory
+# Install
+npm install -g @uiseal/cli
+
+# Initialize — auto-detects your token source (Tailwind, CSS vars, Style Dictionary, or scans code)
+uiseal init
+
+# Scan your project
+uiseal check
+
+# Preview fixes, then apply them
+uiseal check --fix --dry-run
+uiseal check --fix
+
+# Measure how far your code has drifted from the live token source
+uiseal drift
+
+# Watch for changes in real time — pair with an AI coding tool
+uiseal watch
+```
+
+## Supported stacks
+
+| Stack | File types |
+|---|---|
+| CSS / CSS Modules | `.css`, `.module.css` |
+| SCSS / LESS | `.scss`, `.less`, `.module.scss`, `.module.less` |
+| React | `.tsx`, `.jsx` (including inline `style` props) |
+| Vue | `.vue` (`<style>` + `<template>`) |
+| Angular | `.component.ts` (inline styles/template) + `.component.html` (external template) |
+| Svelte | `.svelte` |
+| Tailwind | arbitrary-value classes in `class`/`className`, in any of the above |
+| Blade (PHP) | `.blade.php` |
+| Jinja2 (Python) | `.j2`, `.jinja2` |
+| ERB (Ruby) | `.erb`, `.html.erb` |
+| Twig | `.twig`, `.html.twig` |
+
+13 file types across 12 parser registry entries — see [Framework support](#framework-support) below for what's checked in each.
+
+## Token sources
+
+`uiseal init` doesn't have to guess your design tokens by scanning code for repeated values — it reads them straight from wherever your project already defines them, and falls back to a code scan only when nothing more authoritative exists.
+
+| Source | `init`/`drift` id | Reads |
+|---|---|---|
+| Tailwind CSS config | `tailwind` | `tailwind.config.{js,cjs,mjs,ts}` |
+| Style Dictionary / W3C DTCG | `tokens` | `tokens.json`, `design-tokens.json`, `*.tokens.json`, a `tokens/`/`design-tokens/` directory, or a `style-dictionary.config.json`'s `source` glob |
+| CSS / SCSS variables | `css-vars` | The most-populated `:root { --* }` or top-level `$var` file among common names/locations |
+| Scan existing code | `code-scan` | Repeated values across your stylesheets and components — the fallback when nothing else is detected |
+
+`uiseal init` runs every source's `detect()` and picks the highest-confidence match automatically (asking you to choose if more than one is found); pass `--from <tailwind|css-vars|tokens|code>` to skip detection. See [Token sources in depth](#token-sources-in-depth) for the full detection/extraction rules, including Style Dictionary/DTCG's alias resolution and type inheritance.
+
+## Commands
+
+### `uiseal` — interactive TUI
+
+Run with no arguments to open the terminal UI: browse violations by file or category, drill into rules, toggle new-vs-all violations, jump straight to a violation in your editor, and manage baselines. Press `:` for a [command palette](#tui) to run any command without leaving the TUI.
+
+### `uiseal check [path]` — scan and report
+
+```sh
+uiseal check                              # scan cwd, pretty output
+uiseal check src                          # scan a specific path
+uiseal check --format json                # machine-readable JSON
+uiseal check --format sarif --output out.sarif  # SARIF for GitHub's Security tab
+uiseal check --fix --dry-run              # preview fixes
+uiseal check --fix                        # apply fixes
+uiseal check --staged                     # only git-staged files (pre-commit)
+```
+
+| Flag | Description |
+|---|---|
+| `-c, --config <dir>` | Directory containing `uiseal.config.{ts,js,json}` |
+| `--staged` | Only check files staged in git |
+| `--report` | POST aggregated metrics to `uiseal_API_URL` |
+| `--update-baseline` | Scan, write all current violations to the baseline file, exit 0 |
+| `--no-baseline` | Ignore the baseline entirely and report all violations |
+| `--verbose` | Show full verbose output even past the 50-violation compact-mode threshold |
+| `--fix` | Apply suggested fixes to source files |
+| `--dry-run` | Show what `--fix` would change without writing any files |
+| `--format <fmt>` | `pretty` \| `json` \| `sarif` (default `pretty`) |
+| `--output <file>` | Write output to a file instead of stdout |
+
+Exit code `0` if no error-severity violations, `1` otherwise — identical across all three formats.
+
+### `uiseal init` — generate `uiseal.config.json`
+
+```sh
+uiseal init                    # auto-detect the token source
+uiseal init --from tailwind    # explicit: tailwind.config.*
+uiseal init --from css-vars    # explicit: CSS/SCSS variables file
+uiseal init --from tokens      # explicit: Style Dictionary / DTCG
+uiseal init --from code        # explicit: scan source code
+uiseal init --force            # overwrite an existing config
+```
+
+### `uiseal drift [path]` — compare the live source against the live code
+
+```sh
+uiseal drift                     # auto-detect source, print a report
+uiseal drift --source tailwind   # compare against a specific source
+uiseal drift --json              # structured output for CI
+uiseal drift --verbose           # show every drifted value, not just the top ones
+uiseal drift -c <dir>            # resolve the project from a different directory
+```
+
+`--source <id>` accepts `tailwind` \| `css-vars` \| `tokens` \| `code-scan`. See [Drift detection](#drift-detection).
+
+### `uiseal watch [path]` — incremental re-scan on save
+
+```sh
+uiseal watch                       # watch cwd
 uiseal watch src                   # watch a specific directory
-uiseal watch --debounce 500        # wait 500ms of quiet before re-scanning (default 300ms)
+uiseal watch --debounce 500        # ms of quiet before re-scanning (default 300)
 uiseal watch --no-clear            # don't clear the terminal between updates
 ```
 
-Recommended workflow: keep `uiseal watch` running in a terminal alongside Cursor, Claude Code, or any other AI coding tool. Violations show up within a few hundred milliseconds of the AI writing a file — hardcoded colors, missing alt text, arbitrary Tailwind values — instead of surfacing only at the next `uiseal check` or CI run, well after the AI (or you) have moved on to something else.
+See [Watch mode](#watch-mode) for how incremental scanning works.
 
-Each update shows a small header with the running totals plus which file just changed, then the same violation list `uiseal check` prints:
+### `uiseal baseline` — manage the design-debt baseline
 
-```
-┌────────────────────────────────────────────────────────┐
-│  uiseal watch                                          │
-│  3 violations (2 errors, 1 warnings) in 1 file          │
-│  Last update: src/App.tsx (3 violations)                │
-└────────────────────────────────────────────────────────┘
+A baseline freezes today's violations so `check` only reports *new* ones — useful for adopting uiseal on a codebase that already has debt.
 
-  src/App.tsx
-    2:16
-      error  Hardcoded color "#1a73e8" in "color". Did you mean var(primary)?  [no-hardcoded-color]
-      fix: var(primary)
-    ...
-
-✖  2 errors, 1 warning in 1 file
-
-Watching 247 files... press q to quit
+```sh
+uiseal baseline update    # rescan, freeze all current violations (same as check --update-baseline)
+uiseal baseline status    # baseline path, enabled state, frozen/new/resolved counts
+uiseal baseline prune     # drop fingerprints for violations that are now fixed
+uiseal baseline disable   # set baseline.enabled = false
 ```
 
-Press `q` or `Ctrl-C` to stop; it prints a final summary and exits with the same code `uiseal check` would (`1` if any error-severity violations remain, `0` otherwise). It also appears as an entry in the interactive TUI (`uiseal` with no arguments).
+All four subcommands accept `-c, --config <dir>`.
 
-**How incremental scanning works:** the 3 cross-file checks (`no-dead-token`, `spacing-near-token`, `variant-sprawl`) can't be computed from a single changed file in isolation, since they compare data across the whole project — those still re-run on every update, but over already-extracted per-file data rather than by re-parsing every file, so they stay fast even on a large project.
+### `uiseal diff [base]` — PR review summary
+
+Compares `HEAD` against a base ref (default `main`) and prints a verdict plus violation-count impact — designed for a CI comment or local pre-PR check.
+
+```sh
+uiseal diff              # diff against main
+uiseal diff develop      # diff against a specific ref
+uiseal diff --markdown   # markdown output instead of a terminal summary
+```
+
+### `uiseal install-hooks` — wire up pre-commit
+
+Adds `husky` + `lint-staged` to `package.json`, sets `scripts.prepare`, and writes `.husky/pre-commit` to run `uiseal check --staged` on every commit. Idempotent — safe to re-run.
+
+```sh
+uiseal install-hooks
+```
 
 ## Output formats
 
@@ -98,45 +218,82 @@ uiseal check --format json | jq '.summary.errors'
 
 [SARIF](https://sarifweb.azurewebsites.net/) (Static Analysis Results Interchange Format) is the standard GitHub uses to power the Security tab: inline PR annotations, a browsable rule catalog, and drift tracking across commits. `uiseal check --format sarif` generates a SARIF 2.1.0 document with a `tool.driver.rules` catalog listing **all** uiseal rules (so the Security tab shows the full ruleset, not just whatever happened to fire on this run) and one `result` per violation, with repo-root-relative, forward-slash file URIs as GitHub's ingestion requires.
 
-This action doesn't upload SARIF itself — pair it with `github/codeql-action/upload-sarif`:
+```sh
+uiseal check --format sarif --output uiseal.sarif
+```
+
+Then upload it in CI with `github/codeql-action/upload-sarif`:
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: your-org/uiseal-action@v1
-  with:
-    sarif-file: uiseal.sarif
+- run: npm install -g @uiseal/cli
+- run: uiseal check --format sarif --output uiseal.sarif
+  continue-on-error: true
 - uses: github/codeql-action/upload-sarif@v3
   if: always()
   with:
     sarif_file: uiseal.sarif
 ```
 
-Or from the CLI directly in any CI system:
-
-```sh
-uiseal check --format sarif --output uiseal.sarif
-```
+A packaged `@uiseal/github-action` exists in this repo (`packages/github-action`) but isn't published yet — use the SARIF/JSON CLI invocations above in the meantime, or reference the action directly from this repo in your workflow.
 
 **Known limitation:** SARIF's `fixes` field (a machine-applicable patch GitHub can display) is omitted for now — uiseal's violation positions point at the start of the declaration/property, not the exact value offset, so a precise fix *region* isn't available the way `--fix` computes it internally. GitHub's SARIF fix support is display-only anyway (it never applies a fix automatically), so the suggested replacement value is folded into the result's message text instead, where it's actually visible in the Security tab.
 
 ## Rules
 
+22 rules plus 3 cross-file post-analyzers = 25 checks, across four categories. **Free** rules run on every plan; **Paid** rules require a Team/Business license (see [License](#license)).
+
+### Design (7 — all free)
+
+| Rule | Description |
+|---|---|
+| `no-hardcoded-color` | Disallow hardcoded color values outside the design token scale |
+| `no-arbitrary-spacing` | Disallow margin/padding/gap values outside the spacing scale |
+| `no-arbitrary-font-size` | Disallow font-size values outside the type scale |
+| `no-unauthorized-font-family` | Disallow font families outside the approved list |
+| `no-arbitrary-radius` | Disallow border-radius values outside the radius scale |
+| `enforce-contrast` | Disallow color/background pairs that fail WCAG contrast |
+| `no-tailwind-arbitrary` | Disallow Tailwind arbitrary values outside the token scale |
+
+### Accessibility (6 — paid)
+
+| Rule | Description |
+|---|---|
+| `no-img-without-alt` | Require alt text on images |
+| `no-div-button` | Require full keyboard support on clickable divs/spans |
+| `no-empty-button` | Require an accessible label on buttons |
+| `no-missing-form-label` | Require an accessible label on form inputs |
+| `no-positive-tabindex` | Disallow tabIndex values greater than 0 |
+| `no-autofocus` | Disallow the autoFocus attribute |
+
+### Security (4 — paid)
+
+| Rule | Description |
+|---|---|
+| `no-xss-dangerous` | Disallow unsanitized `dangerouslySetInnerHTML` |
+| `no-env-in-client` | Disallow server-only env vars in client code |
+| `no-console-sensitive` | Disallow logging sensitive-looking values |
+| `no-hardcoded-credentials` | Disallow hardcoded credential-shaped string literals |
+
+### Quality (5 — 1 free, 4 paid)
+
+| Rule | Description | Tier |
+|---|---|---|
+| `no-inline-styles` | Disallow inline `style` props on JSX elements | Free |
+| `no-todo-without-ticket` | Require a ticket reference on TODO/FIXME comments | Paid |
+| `no-magic-numbers` | Disallow unexplained numeric literals | Paid |
+| `no-oversized-component` | Disallow components over a line-count threshold | Paid |
+| `no-console-log` | Disallow `console.log` left in committed code | Paid |
+
+### Post-analyzers (3 — cross-file, paid)
+
+These compare data across the whole project rather than a single file, so they can't be expressed as a per-file rule.
+
 | Rule | Category | Description |
-|------|----------|-------------|
-| `no-hardcoded-color` | color | Raw color values instead of design tokens |
-| `no-arbitrary-font-size` | typography | Font sizes not from the type scale |
-| `no-arbitrary-radius` | shape | Border-radius values outside the token set |
-| `no-arbitrary-spacing` | spacing | Margin/padding not from the spacing scale |
-| `no-magic-numbers` | tokens | Numeric literals that should be token references |
-| `no-inline-styles` | style | Inline `style` props on JSX elements |
-| `enforce-contrast` | accessibility | Color combinations that fail WCAG contrast ratios |
-| `no-dead-token` | tokens | References to tokens that no longer exist |
-| `no-unauthorized-font-family` | typography | Font families not in the approved list |
-| `no-missing-form-label` | accessibility | Form inputs without an associated label |
-| `no-autofocus` | accessibility | `autofocus` attribute that disrupts focus order |
-| `no-div-button` | accessibility | `<div>` used as an interactive button |
-| `variant-sprawl` | components | Component variants that fall outside the allowed set |
-| `no-tailwind-arbitrary` | design | Tailwind arbitrary-value classes (`px-[13px]`) off the token scale — see [Tailwind support](#tailwind-support) |
+|---|---|---|
+| `no-dead-token` | quality | Flag design tokens that are defined but never used |
+| `spacing-near-token` | design | Suggest the nearest spacing token for near-miss values |
+| `variant-sprawl` | quality | Flag near-duplicate component variants that should be consolidated |
 
 ## TUI
 
@@ -160,18 +317,44 @@ Example: press `:` then type `check --fix --dry-run` and hit Enter to preview fi
 
 ## Config
 
+`uiseal.config.{ts,js,json}`, written by `uiseal init` and read by every other command:
+
 ```json
 {
-  "include": ["src/**/*.{tsx,jsx,css}"],
-  "exclude": ["**/*.test.*", "node_modules"],
+  "tokens": {
+    "colors": { "--color-primary": "#3b82f6", "--color-danger": "#ff0000" },
+    "spacing": [8, 16, 24],
+    "fontSizes": [14, 16, 20],
+    "fontFamilies": ["Inter"],
+    "radii": [4, 8]
+  },
   "rules": {
     "no-hardcoded-color": "error",
     "no-arbitrary-font-size": "warn",
     "no-inline-styles": "off"
   },
-  "tokens": "./tokens.json"
+  "wcag": { "level": "AA" },
+  "ignore": ["node_modules/**", "dist/**", "**/*.min.css"],
+  "baseline": { "enabled": false, "path": ".uiseal-baseline.json" }
 }
 ```
+
+`tokens` is the flat, canonical token set every rule checks values against — this is what `init` extracts from your token source, and what `drift` re-derives from the live source to compare against it. There's no `include`/`exclude` glob: the parser registry (see [Architecture](#architecture)) determines what gets scanned; `ignore` subtracts specific paths from that.
+
+## CI integration
+
+```sh
+# SARIF, for GitHub's Security tab (see above for the full workflow)
+uiseal check --format sarif --output results.sarif
+
+# JSON, for scripting / custom gating
+uiseal check --format json | jq '.summary'
+
+# Fail the build only on errors, ignoring warnings, in one line
+uiseal check --format json | jq -e '.summary.errors == 0' > /dev/null
+```
+
+`uiseal check` and `uiseal drift --json` both exit non-zero on failure, so either works directly as a CI gate without the `jq` wrapper. Pair `uiseal diff` (see [Commands](#commands)) with a PR-comment step for a human-readable summary of what a PR changed relative to its base branch.
 
 ## Architecture
 
@@ -181,7 +364,7 @@ Three seams keep `@uiseal/core` from growing copy-pasted dispatch logic as it ad
 - **Canonical design values** (`packages/core/src/values/parse-value.ts`): `parseValue(raw, propertyHint?)` is the single place that knows how to read a hex/rgb/hsl color, a px/rem length, or a font-family literal, and whether a value is a token reference — `var(--…)`, a SCSS `$variable`, or a LESS `@variable`. Rules, the extractor, and analyzers call `parseValue()` instead of keeping their own regexes. To support a new value kind, extend `parseValue()`; don't add a new regex to a rule.
 - **Token sources** (`packages/core/src/sources/registry.ts`) — see below.
 
-## Token sources
+## Token sources in depth
 
 `uiseal init` doesn't have to guess your design tokens by scanning code for repeated values — it can read them straight from wherever your project already defines them. A **token source** is `{ id, label, detect(cwd), extract(cwd) }`: `detect()` reports whether the source exists in this project (with a confidence, for ranking when more than one is found), `extract()` reads it into a flat `SourceTokens` shape ready to drop into `uiseal.config.json`.
 
@@ -261,7 +444,46 @@ uiseal drift --json | jq '.summary.driftPercentage'
 
 **Known limitation:** drift's code-value collection covers CSS declarations and inline styles (real `.css`/`.scss`/`.less` files, and JSX/Vue/Angular/Svelte inline `style`/`style:`/`:style`/`[ngStyle]` bindings) — Tailwind utility classes aren't scanned for drift purposes (matching the scope of the underlying code extractor). A codebase that's 100% Tailwind classes with no inline styles or stylesheets will show 0 unique values in code, not an error.
 
-## Tailwind support
+## Watch mode
+
+`uiseal watch` re-scans incrementally: it does one full initial scan, then re-analyzes only the file(s) that actually changed on every save, instead of re-scanning the whole project. On a project with hundreds of files, that's the difference between an update landing in well under 100ms and a multi-second full rescan on every keystroke-adjacent save — which matters most when an AI tool is generating or editing code and files are changing every few seconds.
+
+```sh
+uiseal watch                       # watch the current directory
+uiseal watch src                   # watch a specific directory
+uiseal watch --debounce 500        # wait 500ms of quiet before re-scanning (default 300ms)
+uiseal watch --no-clear            # don't clear the terminal between updates
+```
+
+Recommended workflow: keep `uiseal watch` running in a terminal alongside Cursor, Claude Code, or any other AI coding tool. Violations show up within a few hundred milliseconds of the AI writing a file — hardcoded colors, missing alt text, arbitrary Tailwind values — instead of surfacing only at the next `uiseal check` or CI run, well after the AI (or you) have moved on to something else.
+
+Each update shows a small header with the running totals plus which file just changed, then the same violation list `uiseal check` prints:
+
+```
+┌────────────────────────────────────────────────────────┐
+│  uiseal watch                                          │
+│  3 violations (2 errors, 1 warnings) in 1 file          │
+│  Last update: src/App.tsx (3 violations)                │
+└────────────────────────────────────────────────────────┘
+
+  src/App.tsx
+    2:16
+      error  Hardcoded color "#1a73e8" in "color". Did you mean var(primary)?  [no-hardcoded-color]
+      fix: var(primary)
+    ...
+
+✖  2 errors, 1 warning in 1 file
+
+Watching 247 files... press q to quit
+```
+
+Press `q` or `Ctrl-C` to stop; it prints a final summary and exits with the same code `uiseal check` would (`1` if any error-severity violations remain, `0` otherwise). It also appears as an entry in the interactive TUI (`uiseal` with no arguments).
+
+**How incremental scanning works:** the 3 cross-file post-analyzers (`no-dead-token`, `spacing-near-token`, `variant-sprawl`) can't be computed from a single changed file in isolation, since they compare data across the whole project — those still re-run on every update, but over already-extracted per-file data rather than by re-parsing every file, so they stay fast even on a large project.
+
+## Framework support
+
+### Tailwind support
 
 A Tailwind class like `px-4` or `text-blue-500` is a *reference* to whatever's in your Tailwind config — it's valid by definition, not something uiseal can second-guess without re-implementing Tailwind's own theme resolution. What uiseal checks instead is Tailwind's arbitrary-value escape hatch: `px-[13px]`, `text-[#ff5733]`, `rounded-[7px]`, `[padding:13px]` — literal values written inline, bypassing the design system entirely. That's the pattern this catches, and it's a common "AI smell": a generated component that's 95% standard utilities with one arbitrary value slipped in.
 
@@ -280,7 +502,7 @@ uiseal check --fix            # px-[13px] -> px-[12px] when a close token exists
 - Only what's statically analyzable in `className` is read: a plain string, a template literal's static parts (`` `px-4 ${dynamic}` `` — the `${dynamic}` part is skipped, not evaluated), string-literal arguments to any call expression (covers `cn()`/`clsx()`/`classnames()` without hardcoding those names — `cn('px-4', condition && 'mt-2')` skips the conditional argument), and `+` string concatenation. A bare variable (`className={classes}`) or anything else dynamic is skipped entirely — no false positives, but no coverage either.
 - Fix suggestions substitute the nearest on-token *raw value* back into the same bracket syntax (`px-[13px]` → `px-[12px]`) rather than resolving to the Tailwind utility name that value would correspond to (`px-3`) — the reverse mapping needs your Tailwind config loaded at check-time, not just at init-time. Noted as a future improvement.
 
-## Vue support
+### Vue support
 
 A `.vue` Single File Component has two analyzable parts, both checked: the `<style>` block(s) (including `<style lang="scss">` / `<style lang="less">` — nesting, `$variables`, everything the same CSS rules already handle in a standalone `.scss`/`.less` file) and the `<template>` block, for inline `:style`/`style=` values and `class`/`:class` Tailwind arbitrary values (same rules, same [Tailwind support](#tailwind-support) above — a `.vue` template isn't a second, different Tailwind checker).
 
@@ -293,7 +515,7 @@ A `.vue` Single File Component has two analyzable parts, both checked: the `<sty
 
 **Usage:** no separate flag or setup — `.vue` is in the glob `uiseal check`/`uiseal init` already scan; `--fix` rewrites both `<style>` CSS values and `<template>` Tailwind classes in the same pass.
 
-## Angular support
+### Angular support
 
 An Angular component's styles and template can each be either **inline** (in the `@Component({...})` decorator) or **external** (`styleUrls`/`templateUrl`, pointing at separate files) — uiseal checks both forms the same way. Only `*.component.ts` is scanned as an Angular component (the standard Angular CLI naming convention) — a plain `.ts` file is never parsed at all, so this adds zero scan cost to the rest of a TypeScript codebase.
 
@@ -310,7 +532,7 @@ An Angular component's styles and template can each be either **inline** (in the
 
 **Usage:** no separate flag or setup — `*.component.ts` and `*.component.html` are in the glob `uiseal check`/`uiseal init` already scan; `--fix` rewrites inline `<style>`-equivalent CSS values and template Tailwind classes in the same pass.
 
-## Svelte support
+### Svelte support
 
 A `.svelte` file's `<style>` block (including `lang="scss"`/`lang="less"`) and markup are both checked, the same way as Vue/Angular — parsed with the real Svelte compiler (`svelte/compiler`), which gives every attribute and directive its own precise, already-absolute position in the file.
 
@@ -325,7 +547,7 @@ A `.svelte` file's `<style>` block (including `lang="scss"`/`lang="less"`) and m
 
 **Usage:** no separate flag or setup — `.svelte` is in the glob `uiseal check`/`uiseal init` already scan; `--fix` rewrites both `<style>` CSS values and template Tailwind classes/directives in the same pass.
 
-## Backend template support
+### Backend template support
 
 Laravel Blade, Jinja2, Rails ERB, and Twig — all four dialects are HTML with embedded template syntax (`{{ }}`, `{% %}`, `<% %>`, `@directive`), checked by one shared parser: a regex-based tag/attribute scan (the same proven approach as Angular's external `.component.html` templates), not a real template-engine parser.
 
@@ -351,10 +573,22 @@ Laravel Blade, Jinja2, Rails ERB, and Twig — all four dialects are HTML with e
 
 | Package | Description |
 |---------|-------------|
-| [`@uiseal/core`](./packages/core) | The rule engine — AST parsing, rule evaluation, token resolution |
+| [`@uiseal/core`](./packages/core) | The rule engine — parsers, rules, token sources, drift/baseline logic, reporters |
 | [`@uiseal/cli`](./packages/cli) | CLI + TUI (`uiseal` command) |
-| [`@uiseal/github-action`](./packages/github-action) | GitHub Actions integration (coming soon) |
+| [`@uiseal/github-action`](./packages/github-action) | GitHub Actions integration (built, not yet published) |
 
 ## License
 
 [Elastic License 2.0](./LICENSE) — free for internal use. You may not offer uiseal as a hosted or managed service to third parties.
+
+**Free tier** — all 7 design rules plus `no-inline-styles` (8 rules total): `no-hardcoded-color`, `no-arbitrary-spacing`, `no-arbitrary-font-size`, `no-unauthorized-font-family`, `no-arbitrary-radius`, `enforce-contrast`, `no-tailwind-arbitrary`, `no-inline-styles`.
+
+**Team / Business** — every rule: the free 8, plus all 6 accessibility rules, all 4 security rules, the remaining 4 quality rules, and all 3 cross-file post-analyzers (`no-dead-token`, `spacing-near-token`, `variant-sprawl`). Pricing is on [uiseal.io](https://uiseal.io).
+
+## Contributing
+
+- **New file type:** add a `ParserEntry` to `packages/core/src/parsers/registry.ts` (and a `ParsedFile` variant if it isn't CSS-shaped). See [Architecture](#architecture).
+- **New token source:** implement `TokenSource` under `packages/core/src/sources/` and register it in `sources/registry.ts`. See [Token sources in depth](#token-sources-in-depth).
+- **New rule:** add a file under `packages/core/src/rules/` following the `Rule` shape in `rules/types.ts`, export it from `rules/index.ts`, and add it to `securityRules`/`qualityRules`/`allRules` as appropriate.
+
+Tests are fixture-based throughout — most rule/parser/source tests feed a small source snippet in and assert on the resulting violations or extracted tokens, rather than mocking internals. Add a fixture alongside the existing ones in the relevant `*.test.ts` file rather than introducing a new test pattern.

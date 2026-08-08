@@ -1,6 +1,24 @@
 {
   "name": "@uiseal/cli",
   "version": "0.1.6",
+  "description": "CLI and interactive TUI for uiseal — design-system enforcement for AI-generated code. Checks CSS, JSX, Vue, Angular, Svelte, and backend templates against your design tokens.",
+  "keywords": [
+    "design-system",
+    "linter",
+    "cli",
+    "tokens",
+    "design-tokens",
+    "css",
+    "scss",
+    "vue",
+    "angular",
+    "svelte",
+    "tailwind",
+    "tailwindcss",
+    "drift",
+    "sarif",
+    "accessibility"
+  ],
   "license": "Elastic-2.0",
   "type": "module",
   "bin": {
@@ -16,7 +34,7 @@
     "type": "git",
     "url": "https://github.com/vitygo/uiseal-engine"
   },
-  "homepage": "https://github.com/vitygo/uiseal-engine#readme",
+  "homepage": "https://uiseal.io",
   "bugs": {
     "url": "https://github.com/vitygo/uiseal-engine/issues"
   },
