@@ -364,7 +364,9 @@ export const initCommand = new Command('init')
   .option('-f, --force', 'Overwrite an existing config file')
   .option(
     '--from <source>',
-    'Token source to use: tailwind | css-vars | code (default: auto-detect)',
+    `Token source to use: ${getAllSources()
+      .map((s) => (s.id === 'code-scan' ? 'code' : s.id))
+      .join(' | ')} (default: auto-detect)`,
   )
   .action(async (opts: { force?: boolean; from?: string }) => {
     const configPath = path.resolve('uiseal.config.json');

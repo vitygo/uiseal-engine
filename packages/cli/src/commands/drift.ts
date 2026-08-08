@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import path from 'node:path';
-import { analyzeDrift, formatDriftReport, formatDriftJson } from '@uiseal/core';
+import { analyzeDrift, formatDriftReport, formatDriftJson, getAllSources } from '@uiseal/core';
 
 // Exit 1 once drift crosses this — hardcoded for v1, per the task; a
 // configurable threshold is a natural follow-up once real usage shows what
@@ -10,7 +10,12 @@ const DRIFT_FAIL_THRESHOLD = 10;
 export const driftCommand = new Command('drift')
   .description('Compare the live token source against the code and report drift')
   .argument('[path]', 'Directory to scan (defaults to cwd)')
-  .option('--source <id>', 'Token source: tailwind | css-vars | code-scan (default: auto-detect)')
+  .option(
+    '--source <id>',
+    `Token source: ${getAllSources()
+      .map((s) => s.id)
+      .join(' | ')} (default: auto-detect)`,
+  )
   .option('-c, --config <dir>', 'Directory to resolve the project from')
   .option('--json', 'Output the drift report as JSON (for CI/scripting)')
   .option('--verbose', 'Show every drifted value, not just the top ones')
