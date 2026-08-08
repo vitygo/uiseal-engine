@@ -1,6 +1,6 @@
 {
   "name": "@uiseal/core",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Design-system enforcement engine for AI-generated code — parses CSS, SCSS, LESS, JSX, Vue, Angular, Svelte, and backend templates and checks them against your design tokens.",
   "keywords": [
     "design-system",
